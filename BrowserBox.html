@@ -240,6 +240,47 @@
             background-color: #95a5a6;
             cursor: not-allowed;
         }
+        
+        /* Parquet table styling */
+        .parquet-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.9rem;
+        }
+        
+        .parquet-table th {
+            background-color: #f5f5f5;
+            padding: 8px 12px;
+            text-align: left;
+            font-weight: 600;
+            border-bottom: 2px solid #ddd;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .parquet-table td {
+            padding: 6px 12px;
+            border-bottom: 1px solid #eee;
+            white-space: nowrap;
+            max-width: 300px;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .parquet-table tr:hover td {
+            background-color: rgba(0, 0, 0, 0.02);
+        }
+        
+        /* Error message styling */
+        .error {
+            color: #e74c3c;
+            padding: 12px;
+            background-color: #fdf1f0;
+            border-left: 4px solid #e74c3c;
+            margin: 10px 0;
+            border-radius: 0 4px 4px 0;
+        }
 
         /* For responsiveness */
         @media (max-width: 768px) {
@@ -806,59 +847,272 @@
             previewFile(file);
         }
 
+        // Preview parquet file using pyodide and hyparquet
+        async function previewParquetFile(file) {
+            log(`Loading parquet preview for ${file.name}...`);
+            
+            // Create loading indicator
+            const loadingDiv = document.createElement('div');
+            loadingDiv.textContent = 'Loading parquet file...';
+            loadingDiv.style.padding = '20px';
+            previewPanel.appendChild(loadingDiv);
+            
+            try {
+                // Read file as ArrayBuffer instead of text
+                const buffer = await file.arrayBuffer();
+                
+                // Create a new worker for previewing parquet
+                const worker = createWorker();
+                
+                // Create a new promise to wait for the result
+                const { promise, resolve } = getPromiseAndResolve();
+                const previewId = getId();
+                
+                // Set up message handler
+                worker.onmessage = function(event) {
+                    const data = event.data;
+                    
+                    // Check if this is a response to our request
+                    if (data.id === previewId) {
+                        if (data.status === "complete") {
+                            // Remove loading indicator
+                            loadingDiv.remove();
+                            
+                            if (data.result) {
+                                // Parse the JSON result
+                                try {
+                                    const tableData = JSON.parse(data.result);
+                                    
+                                    // Create table container
+                                    const tableContainer = document.createElement('div');
+                                    tableContainer.style.overflowX = 'auto';
+                                    tableContainer.style.maxHeight = '500px';
+                                    tableContainer.style.overflowY = 'auto';
+                                    
+                                    // Create HTML table
+                                    const table = document.createElement('table');
+                                    table.className = 'parquet-table';
+                                    table.style.width = '100%';
+                                    
+                                    // Create header
+                                    const thead = document.createElement('thead');
+                                    const headerRow = document.createElement('tr');
+                                    
+                                    // Add column headers
+                                    tableData.columns.forEach(column => {
+                                        const th = document.createElement('th');
+                                        th.textContent = column;
+                                        headerRow.appendChild(th);
+                                    });
+                                    
+                                    thead.appendChild(headerRow);
+                                    table.appendChild(thead);
+                                    
+                                    // Create table body
+                                    const tbody = document.createElement('tbody');
+                                    
+                                    // Add data rows
+                                    tableData.data.forEach(row => {
+                                        const tr = document.createElement('tr');
+                                        
+                                        // Add cells for each column
+                                        tableData.columns.forEach(column => {
+                                            const td = document.createElement('td');
+                                            const value = row[column];
+                                            td.textContent = value !== null ? value.toString() : 'null';
+                                            tr.appendChild(td);
+                                        });
+                                        
+                                        tbody.appendChild(tr);
+                                    });
+                                    
+                                    table.appendChild(tbody);
+                                    tableContainer.appendChild(table);
+                                    previewPanel.appendChild(tableContainer);
+                                    
+                                    // Show metadata
+                                    const metadataDiv = document.createElement('div');
+                                    metadataDiv.style.marginTop = '15px';
+                                    metadataDiv.style.fontSize = '0.9rem';
+                                    metadataDiv.style.color = '#666';
+                                    
+                                    metadataDiv.innerHTML = `
+                                        <div style="margin-bottom: 10px;"><strong>Parquet File Info:</strong></div>
+                                        <div><strong>Rows:</strong> ${tableData.num_rows}</div>
+                                        <div><strong>Columns:</strong> ${tableData.columns.length}</div>
+                                        <div><strong>Schema:</strong></div>
+                                        <pre>${tableData.schema}</pre>
+                                    `;
+                                    
+                                    previewPanel.appendChild(metadataDiv);
+                                    
+                                } catch (error) {
+                                    previewPanel.innerHTML += `<div class="error">Error parsing parquet data: ${error.message}</div>`;
+                                }
+                            }
+                            
+                            resolve(data);
+                        } else if (data.status === "error") {
+                            // Error handling
+                            loadingDiv.remove();
+                            previewPanel.innerHTML += `<div class="error">Error loading parquet file: ${data.error}</div>`;
+                            log(`Error previewing parquet: ${data.error}`, 'error');
+                            
+                            if (data.stderr) {
+                                log(`Python stderr:\n${data.stderr}`, 'error');
+                            }
+                            
+                            resolve(data);
+                        } else {
+                            // Status update
+                            loadingDiv.textContent = `Loading: ${data.status}`;
+                        }
+                    }
+                };
+                
+                // Create a Python script to read the parquet file
+                const parquetScript = `
+import sys
+import json
+import pandas as pd
+
+# Try to import fastparquet, install if not available
+try:
+    import fastparquet
+except ImportError:
+    import micropip
+    await micropip.install('fastparquet')
+    import fastparquet
+
+# Read the parquet file from the filesystem
+parquet_file = "/home/pyodide/data/${file.name}"
+df = pd.read_parquet(parquet_file, engine='fastparquet')
+
+# Convert to a simple dict format for JSON serialization
+# Preview only the first 100 rows
+preview_rows = 100
+result = {
+    "columns": list(df.columns),
+    "data": df.head(preview_rows).to_dict('records'),
+    "num_rows": len(df),
+    "schema": str(df.dtypes)
+}
+
+# Return as JSON
+json.dumps(result)
+                `;
+                
+                // Send the parquet file and script to the worker
+                worker.postMessage({
+                    id: previewId,
+                    python: parquetScript,
+                    files: [{
+                        name: file.name,
+                        data: buffer
+                    }]
+                });
+                
+                await promise;
+                
+            } catch (error) {
+                loadingDiv.remove();
+                previewPanel.innerHTML += `<div class="error">Error reading parquet file: ${error.message}</div>`;
+                log(`Error reading parquet file: ${error.message}`, 'error');
+            }
+        }
+        
+        // Preview HTML file in an iframe
+        function previewHtmlFile(content) {
+            // Create a container for the iframe
+            const iframeContainer = document.createElement('div');
+            iframeContainer.style.width = '100%';
+            iframeContainer.style.height = '500px';
+            iframeContainer.style.border = '1px solid #ddd';
+            iframeContainer.style.borderRadius = '4px';
+            iframeContainer.style.overflow = 'hidden';
+            
+            // Create the iframe
+            const iframe = document.createElement('iframe');
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.border = 'none';
+            iframe.sandbox = 'allow-same-origin'; // Restrict capabilities for security
+            
+            // Append the iframe to the container
+            iframeContainer.appendChild(iframe);
+            previewPanel.appendChild(iframeContainer);
+            
+            // Set the iframe content
+            setTimeout(() => {
+                const iframeDoc = iframe.contentDocument || iframe.contentWindow.document;
+                iframeDoc.open();
+                iframeDoc.write(content);
+                iframeDoc.close();
+            }, 0);
+        }
+        
         // Preview file content
         function previewFile(file) {
             previewPanel.innerHTML = ''; // Clear preview panel
             
-            const fileReader = new FileReader();
+            // Create preview header
+            const header = document.createElement('div');
+            header.style.padding = '0 0 15px 0';
+            header.style.borderBottom = '1px solid #eee';
+            header.style.marginBottom = '15px';
             
-            fileReader.onload = function(e) {
-                const content = e.target.result;
-                const ext = file.name.split('.').pop().toLowerCase();
-                
-                // Create preview header
-                const header = document.createElement('div');
-                header.style.padding = '0 0 15px 0';
-                header.style.borderBottom = '1px solid #eee';
-                header.style.marginBottom = '15px';
-                
-                // For Python files, add a Run button
-                let runButton = '';
-                if (ext === 'py') {
-                    runButton = `<button id="runPreviewedFile" class="run-button" style="float: right;">Run Script</button>`;
-                }
-                
-                header.innerHTML = `<strong>${file.name}</strong> (${(file.size / 1024).toFixed(2)} KB)${runButton}`;
-                previewPanel.appendChild(header);
-                
-                // Add run button event listener
-                if (ext === 'py') {
-                    document.getElementById('runPreviewedFile').addEventListener('click', () => {
-                        executePythonFile(file);
-                    });
-                }
-                
-                // Create preview content based on file type
-                if (ext === 'py' || ext === 'txt' || ext === 'json' || ext === 'csv') {
+            // For Python files, add a Run button
+            let runButton = '';
+            if (file.isPython) {
+                runButton = `<button id="runPreviewedFile" class="run-button" style="float: right;">Run Script</button>`;
+            }
+            
+            header.innerHTML = `<strong>${file.name}</strong> (${(file.size / 1024).toFixed(2)} KB)${runButton}`;
+            previewPanel.appendChild(header);
+            
+            // Add run button event listener
+            if (file.isPython) {
+                document.getElementById('runPreviewedFile').addEventListener('click', () => {
+                    executePythonFile(file);
+                });
+            }
+            
+            const ext = file.name.split('.').pop().toLowerCase();
+            
+            // Handle different file types
+            if (ext === 'parquet') {
+                // For parquet files, use pyodide with hyparquet to load and display
+                previewParquetFile(file);
+            } else if (ext === 'html') {
+                // For HTML files, read as text and display in an iframe
+                const fileReader = new FileReader();
+                fileReader.onload = function(e) {
+                    previewHtmlFile(e.target.result);
+                };
+                fileReader.onerror = function() {
+                    previewPanel.innerHTML += '<div>Error reading HTML file.</div>';
+                    log(`Error reading file: ${file.name}`, 'error');
+                };
+                fileReader.readAsText(file);
+            } else if (ext === 'py' || ext === 'txt' || ext === 'json' || ext === 'csv') {
+                // For text files, read and display as text
+                const fileReader = new FileReader();
+                fileReader.onload = function(e) {
                     const codePreview = document.createElement('pre');
                     codePreview.className = 'code-preview';
-                    codePreview.textContent = content;
+                    codePreview.textContent = e.target.result;
                     previewPanel.appendChild(codePreview);
-                } else if (ext === 'parquet') {
-                    previewPanel.innerHTML += '<div>Parquet files can\'t be previewed directly in browser.</div>';
-                } else {
-                    previewPanel.innerHTML += '<div>No preview available for this file type.</div>';
-                }
-                
-                log(`Previewing: ${file.name}`);
-            };
+                };
+                fileReader.onerror = function() {
+                    previewPanel.innerHTML += '<div>Error reading file.</div>';
+                    log(`Error reading file: ${file.name}`, 'error');
+                };
+                fileReader.readAsText(file);
+            } else {
+                previewPanel.innerHTML += '<div>No preview available for this file type.</div>';
+            }
             
-            fileReader.onerror = function() {
-                previewPanel.innerHTML = '<div>Error reading file.</div>';
-                log(`Error reading file: ${file.name}`, 'error');
-            };
-            
-            fileReader.readAsText(file);
+            log(`Previewing: ${file.name}`);
         }
 
         // Setup drop zone
