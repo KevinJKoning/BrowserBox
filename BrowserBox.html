@@ -437,10 +437,20 @@
                 });
                 
             } catch (error) {
+                // When there's an error, we should still try to get stderr if possible
+                let stderr = "";
+                try {
+                    stderr = self.pyodide.runPython("stderr_collector.value");
+                } catch (e) {
+                    // If we can't get stderr from the collector, just use the error message
+                    stderr = error.message || "Unknown error";
+                }
+                
                 self.postMessage({
                     id, 
                     status: "error",
-                    error: error.message
+                    error: error.message,
+                    stderr: stderr
                 });
             }
         };
@@ -536,7 +546,7 @@
                             log(`Python stdout:\n${data.stdout}`);
                         }
                         
-                        if (data.stderr) {
+                        if (data.stderr && data.stderr.trim()) {
                             log(`Python stderr:\n${data.stderr}`, 'error');
                         }
                         
@@ -544,6 +554,12 @@
                     } else if (data.status === "error") {
                         // Script execution failed
                         log(`Python Error: ${data.error}`, 'error');
+                        
+                        // Log stderr if available
+                        if (data.stderr && data.stderr.trim()) {
+                            log(`Python stderr:\n${data.stderr}`, 'error');
+                        }
+                        
                         resolve(data);
                     } else {
                         // Status update
