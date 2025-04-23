@@ -1,0 +1,902 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Python Browser Runner</title>
+    <style>
+        :root {
+            --primary-bg: #ffffff;
+            --panel-bg: #f9f9f9;
+            --border-color: #e0e0e0;
+            --accent-color: #3498db;
+            --text-color: #333333;
+            --secondary-text: #666666;
+            --terminal-bg: #2d3436;
+            --terminal-text: #ecf0f1;
+            --drop-zone-hover: rgba(52, 152, 219, 0.1);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+
+        body {
+            background-color: var(--primary-bg);
+            color: var(--text-color);
+            height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            grid-template-rows: 1fr 1fr 1fr;
+            grid-template-areas:
+                "left-top right"
+                "left-middle right"
+                "terminal terminal";
+            gap: 16px;
+            height: calc(100vh - 40px);
+        }
+
+        .drop-zone {
+            background-color: var(--panel-bg);
+            border: 2px dashed #777777;
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+            overflow: auto;
+        }
+        
+        .drop-zone #pythonInstructions,
+        .drop-zone #dataInstructions {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            height: 100%;
+        }
+
+        .drop-zone:hover {
+            background-color: var(--drop-zone-hover);
+        }
+
+        .drop-zone.active {
+            border-color: var(--accent-color);
+            background-color: var(--drop-zone-hover);
+        }
+
+        .drop-zone p {
+            margin-bottom: 8px;
+            font-weight: 500;
+        }
+
+        .sub-text {
+            font-size: 0.8rem;
+            color: var(--secondary-text);
+        }
+
+        .python-drop {
+            grid-area: left-top;
+        }
+
+        .data-drop {
+            grid-area: left-middle;
+        }
+
+        .preview-panel {
+            grid-area: right;
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            padding: 20px;
+            overflow: auto;
+            display: flex;
+            flex-direction: column;
+            border: 2px solid #777777;
+        }
+
+        .preview-panel .empty-state {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100%;
+            color: var(--secondary-text);
+        }
+
+        .terminal {
+            grid-area: terminal;
+            background-color: var(--terminal-bg);
+            border-radius: 8px;
+            color: var(--terminal-text);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .terminal-header {
+            padding: 8px 16px;
+            background-color: rgba(255, 255, 255, 0.05);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .terminal-header button {
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+            color: var(--terminal-text);
+            padding: 2px 8px;
+            cursor: pointer;
+            font-size: 0.8rem;
+        }
+
+        .terminal-header button:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+        }
+
+        .terminal-content {
+            padding: 16px;
+            overflow-y: auto;
+            flex-grow: 1;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            white-space: pre-wrap;
+        }
+
+        .file-list {
+            list-style: none;
+            width: 100%;
+            margin-top: 10px;
+        }
+
+        .file-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+            font-size: 0.9rem;
+        }
+
+        .file-table th {
+            text-align: left;
+            padding: 6px 8px;
+            border-bottom: 1px solid var(--border-color);
+            font-weight: 500;
+            color: var(--secondary-text);
+        }
+
+        .file-table td {
+            padding: 8px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .file-row {
+            cursor: pointer;
+        }
+
+        .file-row:hover {
+            background-color: rgba(0, 0, 0, 0.05);
+        }
+
+        .file-row.active {
+            background-color: var(--accent-color);
+            color: white;
+        }
+        
+        .file-row.active td {
+            border-bottom-color: var(--accent-color);
+        }
+
+        .file-icon {
+            margin-right: 4px;
+            font-size: 1.1rem;
+        }
+        
+        .file-checkbox {
+            cursor: pointer;
+            width: 16px;
+            height: 16px;
+        }
+
+        .file-preview {
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            text-align: left;
+        }
+
+        .code-preview {
+            padding: 16px;
+            font-family: 'Menlo', 'Monaco', 'Courier New', monospace;
+            font-size: 0.9rem;
+            line-height: 1.4;
+            background-color: #f5f5f5;
+            border-radius: 4px;
+            white-space: pre;
+            overflow-x: auto;
+        }
+
+        .run-button {
+            background-color: var(--accent-color);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 6px 12px;
+            margin-top: 12px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            transition: background-color 0.2s;
+        }
+
+        .run-button:hover {
+            background-color: #2980b9;
+        }
+
+        .run-button:disabled {
+            background-color: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        /* For responsiveness */
+        @media (max-width: 768px) {
+            .container {
+                grid-template-columns: 1fr;
+                grid-template-rows: auto auto 1fr;
+                grid-template-areas:
+                    "left-top"
+                    "left-middle"
+                    "right"
+                    "terminal";
+                height: auto;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="drop-zone python-drop" id="pythonDropZone">
+            <div id="pythonInstructions">
+                <p>Drag and Drop Python Files Here</p>
+            </div>
+            <div id="pythonFileList" class="file-list"></div>
+        </div>
+        
+        <div class="drop-zone data-drop" id="dataDropZone">
+            <div id="dataInstructions">
+                <p>Drag and Drop Data Files Here</p>
+                <p class="sub-text">(.csv, .parquet, .json, etc.)</p>
+            </div>
+            <div id="dataFileList" class="file-list"></div>
+        </div>
+        
+        <div class="preview-panel" id="previewPanel">
+            <div class="empty-state">Select a File to Preview</div>
+        </div>
+        
+        <div class="terminal" id="terminal">
+            <div class="terminal-header">
+                <span>Python Terminal Output</span>
+                <button id="clearTerminal">Clear</button>
+            </div>
+            <div class="terminal-content" id="terminalContent"></div>
+        </div>
+    </div>
+
+    <!-- Web Worker Blob URLs will be stored here -->
+    <script id="webworker" type="text/javascript">
+        // This will be converted to a Blob URL and used to create the worker
+        // webworker.js
+        importScripts("https://cdn.jsdelivr.net/pyodide/v0.24.1/full/pyodide.js");
+
+        let pyodide;
+        
+        async function loadPyodideAndPackages() {
+            self.pyodide = await loadPyodide();
+            return self.pyodide;
+        }
+        
+        // Start loading pyodide when the worker starts
+        let pyodideReadyPromise = loadPyodideAndPackages();
+
+        self.onmessage = async function(event) {
+            // Make sure pyodide is ready
+            self.pyodide = await pyodideReadyPromise;
+            
+            const { id, python, context, files } = event.data;
+            
+            // Create a status update function to send progress back to main thread
+            function sendStatus(status) {
+                self.postMessage({ id, status });
+            }
+            
+            try {
+                sendStatus("Loading packages...");
+                await self.pyodide.loadPackagesFromImports(python);
+                
+                // Create the data directory for files
+                sendStatus("Setting up filesystem...");
+                self.pyodide.runPython(`
+                    import os
+                    if not os.path.exists('/home/pyodide/data'):
+                        os.makedirs('/home/pyodide/data')
+                `);
+                
+                // Add any files to the virtual filesystem
+                if (files && files.length > 0) {
+                    sendStatus("Loading files into filesystem...");
+                    
+                    // Write each file to the virtual filesystem
+                    for (const file of files) {
+                        const path = `/home/pyodide/data/${file.name}`;
+                        self.pyodide.FS.writeFile(path, new Uint8Array(file.data));
+                    }
+                }
+                
+                // Set up the context
+                sendStatus("Preparing context...");
+                const globals = self.pyodide.toPy(context || {});
+                
+                // Add utility functions to the context
+                self.pyodide.runPython(`
+                    import sys
+                    import os
+                    
+                    # Set up data directory in path
+                    data_dir = '/home/pyodide/data'
+                    sys.path.append(data_dir)
+                    
+                    # Set current working directory to data directory
+                    # This ensures all relative file operations happen in our data directory
+                    os.chdir(data_dir)
+                    
+                    # Redirect stdout and stderr to capture output
+                    import io
+                    
+                    class OutputCollector:
+                        def __init__(self):
+                            self.value = ""
+                        
+                        def write(self, text):
+                            self.value += text
+                            return len(text)
+                        
+                        def flush(self):
+                            pass
+                    
+                    stdout_collector = OutputCollector()
+                    stderr_collector = OutputCollector()
+                    
+                    old_stdout = sys.stdout
+                    old_stderr = sys.stderr
+                    
+                    sys.stdout = stdout_collector
+                    sys.stderr = stderr_collector
+                `);
+                
+                // Run the Python code
+                sendStatus("Running Python code...");
+                const output = await self.pyodide.runPythonAsync(python, { globals });
+                
+                // Get captured stdout and stderr
+                const stdout = self.pyodide.runPython("stdout_collector.value");
+                const stderr = self.pyodide.runPython("stderr_collector.value");
+                
+                // Reset stdout and stderr
+                self.pyodide.runPython(`
+                    sys.stdout = old_stdout
+                    sys.stderr = old_stderr
+                `);
+                
+                // Collect all files from the virtual filesystem
+                sendStatus("Collecting modified files...");
+                const modifiedFiles = [];
+                
+                try {
+                    // Make sure the data directory exists (it should, but double-check)
+                    self.pyodide.runPython(`
+                        import os
+                        if not os.path.exists('/home/pyodide/data'):
+                            os.makedirs('/home/pyodide/data')
+                    `);
+                    
+                    // Get the list of files in the data directory
+                    const dataFiles = self.pyodide.FS.readdir('/home/pyodide/data');
+                    
+                    // Filter out special entries . and ..
+                    const regularFiles = dataFiles.filter(name => name !== '.' && name !== '..');
+                    
+                    sendStatus(`Found ${regularFiles.length} files to collect`);
+                    
+                    // Read each file and convert to transferable format
+                    for (const fileName of regularFiles) {
+                        try {
+                            const path = `/home/pyodide/data/${fileName}`;
+                            const content = self.pyodide.FS.readFile(path, { encoding: 'binary' });
+                            
+                            modifiedFiles.push({
+                                name: fileName,
+                                data: content
+                            });
+                            
+                            sendStatus(`Collected file: ${fileName}`);
+                        } catch (fileError) {
+                            console.error(`Error reading file ${fileName}:`, fileError);
+                            sendStatus(`Error collecting file: ${fileName}`);
+                        }
+                    }
+                } catch (fsError) {
+                    console.error("Error reading filesystem:", fsError);
+                    sendStatus(`Error accessing filesystem: ${fsError.message}`);
+                }
+                
+                // Send back results with modified files
+                self.postMessage({
+                    id,
+                    status: "complete", 
+                    result: output,
+                    stdout,
+                    stderr,
+                    modifiedFiles: modifiedFiles
+                });
+                
+            } catch (error) {
+                self.postMessage({
+                    id, 
+                    status: "error",
+                    error: error.message
+                });
+            }
+        };
+    </script>
+
+    <script>
+        // Store files
+        const pythonFiles = [];
+        const dataFiles = [];
+        let selectedFile = null;
+        
+        // Map of active workers, keyed by script name
+        const activeWorkers = {};
+
+        // DOM Elements
+        const pythonDropZone = document.getElementById('pythonDropZone');
+        const dataDropZone = document.getElementById('dataDropZone');
+        const pythonFileList = document.getElementById('pythonFileList');
+        const dataFileList = document.getElementById('dataFileList');
+        const previewPanel = document.getElementById('previewPanel');
+        const terminalContent = document.getElementById('terminalContent');
+        const clearTerminalBtn = document.getElementById('clearTerminal');
+
+        // Create web worker from inline script
+        function createWorker() {
+            const workerScript = document.getElementById('webworker').textContent;
+            const blob = new Blob([workerScript], { type: 'application/javascript' });
+            const workerUrl = URL.createObjectURL(blob);
+            return new Worker(workerUrl);
+        }
+
+        // Log to terminal
+        function log(message, type = 'info') {
+            const timestamp = new Date().toLocaleTimeString();
+            const logElement = document.createElement('div');
+            logElement.className = `log-entry ${type}`;
+            logElement.innerHTML = `[${timestamp}] ${message}`;
+            terminalContent.appendChild(logElement);
+            terminalContent.scrollTop = terminalContent.scrollHeight;
+            
+            // Add styling for different log types if it doesn't exist
+            if (!document.getElementById('log-styles')) {
+                const styleEl = document.createElement('style');
+                styleEl.id = 'log-styles';
+                styleEl.textContent = `
+                    .log-entry.error { color: #e74c3c; }
+                    .log-entry.warning { color: #f39c12; }
+                    .log-entry.success { color: #2ecc71; }
+                `;
+                document.head.appendChild(styleEl);
+            }
+        }
+
+        // Clear terminal
+        clearTerminalBtn.addEventListener('click', () => {
+            terminalContent.innerHTML = '';
+            log('Terminal cleared');
+        });
+
+        // Function to get a promise and its resolver
+        function getPromiseAndResolve() {
+            let resolve;
+            let promise = new Promise((res) => {
+                resolve = res;
+            });
+            return { promise, resolve };
+        }
+
+        // Unique ID generation for messages
+        let lastId = 1;
+        function getId() {
+            return lastId++;
+        }
+
+        // Run a Python script in a worker
+        async function runPythonScript(scriptContent, context = {}, additionalFiles = []) {
+            // Create a new worker for each script
+            const worker = createWorker();
+            
+            // Create a new promise to wait for the result
+            const { promise, resolve } = getPromiseAndResolve();
+            const scriptId = getId();
+            
+            // Set up message handler
+            worker.onmessage = function(event) {
+                const data = event.data;
+                
+                // Check if this is a response to our request
+                if (data.id === scriptId) {
+                    if (data.status === "complete") {
+                        // Script completed successfully
+                        log(`Script execution completed`, 'success');
+                        
+                        // Log stdout and stderr
+                        if (data.stdout) {
+                            log(`Python stdout:\n${data.stdout}`);
+                        }
+                        
+                        if (data.stderr) {
+                            log(`Python stderr:\n${data.stderr}`, 'error');
+                        }
+                        
+                        resolve(data);
+                    } else if (data.status === "error") {
+                        // Script execution failed
+                        log(`Python Error: ${data.error}`, 'error');
+                        resolve(data);
+                    } else {
+                        // Status update
+                        log(`Pyodide: ${data.status}`);
+                    }
+                }
+            };
+            
+            // Convert file contents to ArrayBuffer for file transfer
+            const fileData = await Promise.all(additionalFiles.map(async (file) => {
+                return {
+                    name: file.name,
+                    data: await file.arrayBuffer()
+                };
+            }));
+            
+            // Send the script to the worker
+            log(`Starting Python execution...`);
+            worker.postMessage({
+                id: scriptId,
+                python: scriptContent,
+                context,
+                files: fileData
+            });
+            
+            return promise;
+        }
+
+        // Handle file selection
+        function handleFileSelect(files, fileType) {
+            const fileArray = fileType === 'python' ? pythonFiles : dataFiles;
+            const fileListElement = fileType === 'python' ? pythonFileList : dataFileList;
+            
+            Array.from(files).forEach(file => {
+                // For Python drop zone, check if file has .py extension
+                if (fileType === 'python' && !file.name.toLowerCase().endsWith('.py')) {
+                    log(`Error: ${file.name} is not a Python file. Only .py files allowed in Python section.`, 'error');
+                    return;
+                }
+                
+                // Check if file already exists
+                if (!fileArray.some(f => f.name === file.name)) {
+                    fileArray.push(file);
+                    log(`Added ${fileType} file: ${file.name}`);
+                } else {
+                    log(`File ${file.name} already exists`, 'warning');
+                }
+            });
+            
+            updateFileList(fileType);
+        }
+
+        // Update file list display
+        function updateFileList(fileType) {
+            const fileArray = fileType === 'python' ? pythonFiles : dataFiles;
+            const fileListElement = fileType === 'python' ? pythonFileList : dataFileList;
+            const instructionsElement = fileType === 'python' ? document.getElementById('pythonInstructions') : document.getElementById('dataInstructions');
+            
+            // Hide instructions if files exist
+            if (fileArray.length > 0) {
+                instructionsElement.style.display = 'none';
+            } else {
+                instructionsElement.style.display = 'block';
+            }
+            
+            fileListElement.innerHTML = '';
+            
+            if (fileArray.length > 0) {
+                // Create table
+                const table = document.createElement('table');
+                table.className = 'file-table';
+                
+                // Create table header
+                const thead = document.createElement('thead');
+                thead.innerHTML = `
+                    <tr>
+                        <th><input type="checkbox" id="${fileType}SelectAll"></th>
+                        <th>Name</th>
+                        <th>Size</th>
+                        <th>Last Modified</th>
+                        ${fileType === 'python' ? '<th>Action</th>' : ''}
+                    </tr>
+                `;
+                table.appendChild(thead);
+                
+                // Create table body
+                const tbody = document.createElement('tbody');
+                fileArray.forEach(file => {
+                    const tr = document.createElement('tr');
+                    tr.className = 'file-row';
+                    
+                    // Format date
+                    const date = new Date(file.lastModified);
+                    const dateString = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+                    
+                    // Calculate size
+                    const sizeString = file.size < 1024 
+                        ? file.size + ' B'
+                        : file.size < 1024 * 1024
+                            ? (file.size / 1024).toFixed(1) + ' KB'
+                            : (file.size / (1024 * 1024)).toFixed(1) + ' MB';
+                    
+                    // Set row content with Run button for Python files
+                    const actionColumn = fileType === 'python' 
+                        ? `<td><button class="run-button" data-filename="${file.name}">Run</button></td>` 
+                        : '';
+                    
+                    tr.innerHTML = `
+                        <td><input type="checkbox" class="file-checkbox" data-filename="${file.name}"></td>
+                        <td><span class="file-icon">📄</span>${file.name}</td>
+                        <td>${sizeString}</td>
+                        <td>${dateString}</td>
+                        ${actionColumn}
+                    `;
+                    
+                    // Add click handler for row
+                    tr.addEventListener('click', (e) => {
+                        // Don't trigger row selection when checkbox or button is clicked
+                        if (e.target.type !== 'checkbox' && e.target.tagName !== 'BUTTON') {
+                            selectFile(file, fileType);
+                        }
+                    });
+                    
+                    tbody.appendChild(tr);
+                });
+                
+                table.appendChild(tbody);
+                fileListElement.appendChild(table);
+                
+                // Add select all functionality
+                const selectAllCheckbox = document.getElementById(`${fileType}SelectAll`);
+                selectAllCheckbox.addEventListener('change', () => {
+                    const checkboxes = fileListElement.querySelectorAll('.file-checkbox');
+                    checkboxes.forEach(checkbox => {
+                        checkbox.checked = selectAllCheckbox.checked;
+                    });
+                });
+                
+                // Add run button functionality for Python files
+                if (fileType === 'python') {
+                    const runButtons = fileListElement.querySelectorAll('.run-button');
+                    runButtons.forEach(button => {
+                        button.addEventListener('click', async (e) => {
+                            e.stopPropagation();
+                            const filename = button.dataset.filename;
+                            const file = pythonFiles.find(f => f.name === filename);
+                            if (file) {
+                                await executePythonFile(file);
+                            }
+                        });
+                    });
+                }
+            }
+        }
+        
+        // Process modified files returned from Pyodide
+        function handleModifiedFiles(modifiedFiles) {
+            if (!modifiedFiles || modifiedFiles.length === 0) {
+                return;
+            }
+            
+            log(`Processing ${modifiedFiles.length} modified files from Python execution...`, 'info');
+            
+            // Process each modified file
+            modifiedFiles.forEach(modifiedFile => {
+                // Create a File object from the binary data
+                const blob = new Blob([modifiedFile.data], { type: 'application/octet-stream' });
+                const file = new File([blob], modifiedFile.name, { 
+                    lastModified: new Date().getTime() 
+                });
+                
+                // Check if this file already exists in our data files
+                const existingFileIndex = dataFiles.findIndex(f => f.name === modifiedFile.name);
+                
+                if (existingFileIndex >= 0) {
+                    // Replace the existing file
+                    dataFiles[existingFileIndex] = file;
+                    log(`Updated file: ${modifiedFile.name}`, 'success');
+                } else {
+                    // Add as a new file
+                    dataFiles.push(file);
+                    log(`Added new file from Python: ${modifiedFile.name}`, 'success');
+                }
+            });
+            
+            // Refresh the data file list display
+            updateFileList('data');
+        }
+        
+        // Execute a Python file using a web worker
+        async function executePythonFile(file) {
+            log(`Preparing to execute ${file.name}...`);
+            
+            // Read the file content
+            const content = await file.text();
+            
+            // Get selected data files to include
+            const selectedDataFiles = [];
+            document.querySelectorAll('#dataFileList .file-checkbox:checked').forEach(checkbox => {
+                const filename = checkbox.dataset.filename;
+                const dataFile = dataFiles.find(f => f.name === filename);
+                if (dataFile) {
+                    selectedDataFiles.push(dataFile);
+                }
+            });
+            
+            if (selectedDataFiles.length > 0) {
+                log(`Including ${selectedDataFiles.length} data files`);
+            }
+            
+            // Run the Python script
+            try {
+                // Execute the script with the selected files
+                const result = await runPythonScript(content, {}, selectedDataFiles);
+                
+                if (result.status === "complete") {
+                    if (result.result) {
+                        log(`Result: ${result.result}`);
+                    }
+                    
+                    // Process any modified files returned from Pyodide
+                    if (result.modifiedFiles && result.modifiedFiles.length > 0) {
+                        handleModifiedFiles(result.modifiedFiles);
+                    }
+                }
+            } catch (error) {
+                log(`Failed to execute ${file.name}: ${error}`, 'error');
+            }
+        }
+
+        // Select a file for preview
+        function selectFile(file, fileType) {
+            selectedFile = { file, type: fileType };
+            
+            // Update UI for selected file
+            document.querySelectorAll('.file-row').forEach(row => {
+                row.classList.remove('active');
+            });
+            
+            // Find the file row and mark it as active
+            const fileRows = document.querySelectorAll('.file-row');
+            for (let row of fileRows) {
+                if (row.textContent.includes(file.name)) {
+                    row.classList.add('active');
+                    break;
+                }
+            }
+            
+            // Preview file
+            previewFile(file);
+        }
+
+        // Preview file content
+        function previewFile(file) {
+            previewPanel.innerHTML = ''; // Clear preview panel
+            
+            const fileReader = new FileReader();
+            
+            fileReader.onload = function(e) {
+                const content = e.target.result;
+                const ext = file.name.split('.').pop().toLowerCase();
+                
+                // Create preview header
+                const header = document.createElement('div');
+                header.style.padding = '0 0 15px 0';
+                header.style.borderBottom = '1px solid #eee';
+                header.style.marginBottom = '15px';
+                
+                // For Python files, add a Run button
+                let runButton = '';
+                if (ext === 'py') {
+                    runButton = `<button id="runPreviewedFile" class="run-button" style="float: right;">Run Script</button>`;
+                }
+                
+                header.innerHTML = `<strong>${file.name}</strong> (${(file.size / 1024).toFixed(2)} KB)${runButton}`;
+                previewPanel.appendChild(header);
+                
+                // Add run button event listener
+                if (ext === 'py') {
+                    document.getElementById('runPreviewedFile').addEventListener('click', () => {
+                        executePythonFile(file);
+                    });
+                }
+                
+                // Create preview content based on file type
+                if (ext === 'py' || ext === 'txt' || ext === 'json' || ext === 'csv') {
+                    const codePreview = document.createElement('pre');
+                    codePreview.className = 'code-preview';
+                    codePreview.textContent = content;
+                    previewPanel.appendChild(codePreview);
+                } else if (ext === 'parquet') {
+                    previewPanel.innerHTML += '<div>Parquet files can\'t be previewed directly in browser.</div>';
+                } else {
+                    previewPanel.innerHTML += '<div>No preview available for this file type.</div>';
+                }
+                
+                log(`Previewing: ${file.name}`);
+            };
+            
+            fileReader.onerror = function() {
+                previewPanel.innerHTML = '<div>Error reading file.</div>';
+                log(`Error reading file: ${file.name}`, 'error');
+            };
+            
+            fileReader.readAsText(file);
+        }
+
+        // Setup drop zones
+        function setupDropZone(dropZone, fileType) {
+            // Handle drag over
+            dropZone.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropZone.classList.add('active');
+            });
+            
+            // Handle drag leave
+            dropZone.addEventListener('dragleave', () => {
+                dropZone.classList.remove('active');
+            });
+            
+            // Handle drop
+            dropZone.addEventListener('drop', (e) => {
+                e.preventDefault();
+                dropZone.classList.remove('active');
+                handleFileSelect(e.dataTransfer.files, fileType);
+            });
+        }
+
+        // Initialize
+        function init() {
+            setupDropZone(pythonDropZone, 'python');
+            setupDropZone(dataDropZone, 'data');
+            log('App initialized and ready');
+            log('Drag and drop Python files to execute them with Pyodide');
+        }
+
+        // Start the app
+        init();
+    </script>
+</body>
+</html>
