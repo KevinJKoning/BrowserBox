@@ -260,12 +260,14 @@
         }
         
         .parquet-table td {
-            padding: 6px 12px;
+            padding: 8px 12px;
             border-bottom: 1px solid #eee;
             white-space: nowrap;
             max-width: 300px;
             overflow: hidden;
             text-overflow: ellipsis;
+            height: 36px; /* Fixed height for table rows */
+            line-height: 20px; /* Line height for better text display */
         }
         
         .parquet-table tr:hover td {
@@ -847,7 +849,7 @@
             previewFile(file);
         }
 
-        // Preview parquet file using pyodide and hyparquet
+        // Preview parquet file using JavaScript hyparquet
         async function previewParquetFile(file) {
             log(`Loading parquet preview for ${file.name}...`);
             
@@ -858,161 +860,105 @@
             previewPanel.appendChild(loadingDiv);
             
             try {
-                // Read file as ArrayBuffer instead of text
+                // Load hyparquet from CDN
+                const { parquetReadObjects, parquetMetadataAsync, parquetSchema } = 
+                    await import('https://cdn.jsdelivr.net/npm/hyparquet/src/hyparquet.min.js');
+                
+                // Read file as ArrayBuffer
                 const buffer = await file.arrayBuffer();
                 
-                // Create a new worker for previewing parquet
-                const worker = createWorker();
+                // Get file metadata first
+                const metadata = await parquetMetadataAsync(buffer);
+                const schema = parquetSchema(metadata);
                 
-                // Create a new promise to wait for the result
-                const { promise, resolve } = getPromiseAndResolve();
-                const previewId = getId();
+                // Get number of rows and column names
+                const numRows = Number(metadata.num_rows);
+                const columnNames = schema.children.map(e => e.element.name);
                 
-                // Set up message handler
-                worker.onmessage = function(event) {
-                    const data = event.data;
-                    
-                    // Check if this is a response to our request
-                    if (data.id === previewId) {
-                        if (data.status === "complete") {
-                            // Remove loading indicator
-                            loadingDiv.remove();
-                            
-                            if (data.result) {
-                                // Parse the JSON result
-                                try {
-                                    const tableData = JSON.parse(data.result);
-                                    
-                                    // Create table container
-                                    const tableContainer = document.createElement('div');
-                                    tableContainer.style.overflowX = 'auto';
-                                    tableContainer.style.maxHeight = '500px';
-                                    tableContainer.style.overflowY = 'auto';
-                                    
-                                    // Create HTML table
-                                    const table = document.createElement('table');
-                                    table.className = 'parquet-table';
-                                    table.style.width = '100%';
-                                    
-                                    // Create header
-                                    const thead = document.createElement('thead');
-                                    const headerRow = document.createElement('tr');
-                                    
-                                    // Add column headers
-                                    tableData.columns.forEach(column => {
-                                        const th = document.createElement('th');
-                                        th.textContent = column;
-                                        headerRow.appendChild(th);
-                                    });
-                                    
-                                    thead.appendChild(headerRow);
-                                    table.appendChild(thead);
-                                    
-                                    // Create table body
-                                    const tbody = document.createElement('tbody');
-                                    
-                                    // Add data rows
-                                    tableData.data.forEach(row => {
-                                        const tr = document.createElement('tr');
-                                        
-                                        // Add cells for each column
-                                        tableData.columns.forEach(column => {
-                                            const td = document.createElement('td');
-                                            const value = row[column];
-                                            td.textContent = value !== null ? value.toString() : 'null';
-                                            tr.appendChild(td);
-                                        });
-                                        
-                                        tbody.appendChild(tr);
-                                    });
-                                    
-                                    table.appendChild(tbody);
-                                    tableContainer.appendChild(table);
-                                    previewPanel.appendChild(tableContainer);
-                                    
-                                    // Show metadata
-                                    const metadataDiv = document.createElement('div');
-                                    metadataDiv.style.marginTop = '15px';
-                                    metadataDiv.style.fontSize = '0.9rem';
-                                    metadataDiv.style.color = '#666';
-                                    
-                                    metadataDiv.innerHTML = `
-                                        <div style="margin-bottom: 10px;"><strong>Parquet File Info:</strong></div>
-                                        <div><strong>Rows:</strong> ${tableData.num_rows}</div>
-                                        <div><strong>Columns:</strong> ${tableData.columns.length}</div>
-                                        <div><strong>Schema:</strong></div>
-                                        <pre>${tableData.schema}</pre>
-                                    `;
-                                    
-                                    previewPanel.appendChild(metadataDiv);
-                                    
-                                } catch (error) {
-                                    previewPanel.innerHTML += `<div class="error">Error parsing parquet data: ${error.message}</div>`;
-                                }
-                            }
-                            
-                            resolve(data);
-                        } else if (data.status === "error") {
-                            // Error handling
-                            loadingDiv.remove();
-                            previewPanel.innerHTML += `<div class="error">Error loading parquet file: ${data.error}</div>`;
-                            log(`Error previewing parquet: ${data.error}`, 'error');
-                            
-                            if (data.stderr) {
-                                log(`Python stderr:\n${data.stderr}`, 'error');
-                            }
-                            
-                            resolve(data);
-                        } else {
-                            // Status update
-                            loadingDiv.textContent = `Loading: ${data.status}`;
-                        }
-                    }
-                };
-                
-                // Create a Python script to read the parquet file
-                const parquetScript = `
-import sys
-import json
-import pandas as pd
-
-# Try to import fastparquet, install if not available
-try:
-    import fastparquet
-except ImportError:
-    import micropip
-    await micropip.install('fastparquet')
-    import fastparquet
-
-# Read the parquet file from the filesystem
-parquet_file = "/home/pyodide/data/${file.name}"
-df = pd.read_parquet(parquet_file, engine='fastparquet')
-
-# Convert to a simple dict format for JSON serialization
-# Preview only the first 100 rows
-preview_rows = 100
-result = {
-    "columns": list(df.columns),
-    "data": df.head(preview_rows).to_dict('records'),
-    "num_rows": len(df),
-    "schema": str(df.dtypes)
-}
-
-# Return as JSON
-json.dumps(result)
-                `;
-                
-                // Send the parquet file and script to the worker
-                worker.postMessage({
-                    id: previewId,
-                    python: parquetScript,
-                    files: [{
-                        name: file.name,
-                        data: buffer
-                    }]
+                // Preview max 100 rows
+                const previewRows = 100;
+                const data = await parquetReadObjects({
+                    file: buffer,
+                    columns: columnNames,
+                    rowStart: 0,
+                    rowEnd: Math.min(previewRows, numRows)
                 });
                 
-                await promise;
+                // Remove loading indicator
+                loadingDiv.remove();
+                
+                // Create table container
+                const tableContainer = document.createElement('div');
+                tableContainer.style.overflowX = 'auto';
+                tableContainer.style.maxHeight = '500px';
+                tableContainer.style.minHeight = '200px'; // Minimum height for ~5 rows
+                tableContainer.style.overflowY = 'auto';
+                
+                // Create HTML table
+                const table = document.createElement('table');
+                table.className = 'parquet-table';
+                table.style.width = '100%';
+                
+                // Create header
+                const thead = document.createElement('thead');
+                const headerRow = document.createElement('tr');
+                
+                // Add column headers
+                columnNames.forEach(column => {
+                    const th = document.createElement('th');
+                    th.textContent = column;
+                    headerRow.appendChild(th);
+                });
+                
+                thead.appendChild(headerRow);
+                table.appendChild(thead);
+                
+                // Create table body
+                const tbody = document.createElement('tbody');
+                
+                // Add data rows
+                data.forEach(row => {
+                    const tr = document.createElement('tr');
+                    
+                    // Add cells for each column
+                    columnNames.forEach(column => {
+                        const td = document.createElement('td');
+                        const value = row[column];
+                        td.textContent = value !== null && value !== undefined ? value.toString() : 'null';
+                        tr.appendChild(td);
+                    });
+                    
+                    tbody.appendChild(tr);
+                });
+                
+                table.appendChild(tbody);
+                tableContainer.appendChild(table);
+                previewPanel.appendChild(tableContainer);
+                
+                // Show metadata
+                const metadataDiv = document.createElement('div');
+                metadataDiv.style.marginTop = '15px';
+                metadataDiv.style.fontSize = '0.9rem';
+                metadataDiv.style.color = '#666';
+                
+                // Extract schema types for display
+                const schemaInfo = columnNames.map(name => {
+                    const child = schema.children.find(c => c.element.name === name);
+                    return `${name}: ${child ? child.element.type : 'unknown'}`;
+                }).join('\n');
+                
+                metadataDiv.innerHTML = `
+                    <div style="margin-bottom: 10px;"><strong>Parquet File Info:</strong></div>
+                    <div><strong>Rows:</strong> ${numRows}</div>
+                    <div><strong>Columns:</strong> ${columnNames.length}</div>
+                    <div><strong>Preview:</strong> Showing ${Math.min(previewRows, numRows)} of ${numRows} rows</div>
+                    <div style="margin-top: 10px;"><strong>Schema:</strong></div>
+                    <pre style="font-size: 0.8rem; margin-top: 5px;">${schemaInfo}</pre>
+                `;
+                
+                previewPanel.appendChild(metadataDiv);
+                
+                log(`Parquet file loaded: ${columnNames.length} columns, ${numRows} rows`, 'success');
                 
             } catch (error) {
                 loadingDiv.remove();
