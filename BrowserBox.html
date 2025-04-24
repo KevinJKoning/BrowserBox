@@ -168,6 +168,102 @@
             font-weight: 500;
             color: var(--secondary-text);
         }
+        
+        /* Action buttons styling */
+        .action-buttons {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .btn {
+            padding: 6px 12px;
+            border: none;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .btn-run {
+            background-color: var(--accent-color);
+            color: white;
+        }
+        
+        .btn-run:hover:not(:disabled) {
+            background-color: #2980b9;
+        }
+        
+        .btn-remove {
+            background-color: #e74c3c;
+            color: white;
+        }
+        
+        .btn-remove:hover:not(:disabled) {
+            background-color: #c0392b;
+        }
+        
+        .btn-download {
+            background-color: #27ae60;
+            color: white;
+        }
+        
+        .btn-download:hover:not(:disabled) {
+            background-color: #219651;
+        }
+        
+        .btn-include {
+            background-color: #8e44ad;
+            color: white;
+        }
+        
+        .btn-include:hover:not(:disabled) {
+            background-color: #7d3c98;
+        }
+        
+        /* Badge for included files */
+        .included-badge {
+            display: inline-block;
+            background-color: #8e44ad;
+            color: white;
+            font-size: 0.7rem;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: 6px;
+            vertical-align: middle;
+        }
+        
+        /* Sortable table headers */
+        .sortable {
+            cursor: pointer;
+            position: relative;
+            padding-right: 18px !important;
+        }
+        
+        .sortable:after {
+            content: "↑↓";
+            font-size: 0.7em;
+            position: absolute;
+            right: 6px;
+            opacity: 0.3;
+        }
+        
+        .sortable.sort-active:after {
+            opacity: 1;
+        }
+        
+        .sortable.sort-asc:after {
+            content: "↑";
+        }
+        
+        .sortable.sort-desc:after {
+            content: "↓";
+        }
 
         .file-table td {
             padding: 8px;
@@ -504,6 +600,11 @@
         const allFiles = [];
         let selectedFile = null;
         
+        // Array to store files included for run
+        // This is used by the "Include in Run" feature to track files that should be
+        // available to all Python executions until cleared or until after execution
+        const includedForRun = [];
+        
         // Map of active workers, keyed by script name
         const activeWorkers = {};
 
@@ -663,20 +764,40 @@
             
             filesList.innerHTML = '';
             
+            // Add action buttons if files exist
+            if (allFiles.length > 0) {
+                const actionButtons = document.createElement('div');
+                actionButtons.className = 'action-buttons';
+                actionButtons.innerHTML = `
+                    <button id="runSelectedFiles" class="btn btn-run" disabled>Run</button>
+                    <button id="includeInRunFiles" class="btn btn-include" disabled>Include in Run</button>
+                    <button id="downloadSelectedFiles" class="btn btn-download" disabled>Download</button>
+                    <button id="removeSelectedFiles" class="btn btn-remove" disabled>Delete</button>
+                `;
+                
+                // Create a hidden div element to hold the includedFilesStatus ID
+                // This way we still have the element but it's not visible
+                const includedFilesStatus = document.createElement('div');
+                includedFilesStatus.id = 'includedFilesStatus';
+                includedFilesStatus.style.display = 'none';
+                
+                filesList.appendChild(includedFilesStatus);
+                filesList.appendChild(actionButtons);
+            }
+            
             if (allFiles.length > 0) {
                 // Create table
                 const table = document.createElement('table');
                 table.className = 'file-table';
                 
-                // Create table header
+                // Create table header with sortable columns
                 const thead = document.createElement('thead');
                 thead.innerHTML = `
                     <tr>
                         <th><input type="checkbox" id="selectAllFiles"></th>
-                        <th>Name</th>
-                        <th>Size</th>
-                        <th>Last Modified</th>
-                        <th>Action</th>
+                        <th class="sortable sort-active sort-asc" data-sort="name">Name</th>
+                        <th class="sortable" data-sort="size">Size</th>
+                        <th class="sortable" data-sort="date">Last Modified</th>
                     </tr>
                 `;
                 table.appendChild(thead);
@@ -698,18 +819,32 @@
                             ? (file.size / 1024).toFixed(1) + ' KB'
                             : (file.size / (1024 * 1024)).toFixed(1) + ' MB';
                     
-                    // Set row content with Run button only for Python files
-                    const actionColumn = file.isPython
-                        ? `<td><button class="run-button" data-filename="${file.name}">Run</button></td>` 
-                        : '<td></td>';
+                    // Store size value for sorting
+                    const sizeBytes = file.size;
+                    
+                    // Store date for sorting
+                    const dateValue = file.lastModified;
                     
                     tr.innerHTML = `
                         <td><input type="checkbox" class="file-checkbox" data-filename="${file.name}"></td>
-                        <td><span class="file-icon">📄</span>${file.name}</td>
-                        <td>${sizeString}</td>
-                        <td>${dateString}</td>
-                        ${actionColumn}
+                        <td data-value="${file.name}"><span class="file-icon">📄</span>${file.name}</td>
+                        <td data-value="${sizeBytes}">${sizeString}</td>
+                        <td data-value="${dateValue}">${dateString}</td>
                     `;
+                    
+                    // Add data attributes for sorting
+                    tr.dataset.name = file.name.toLowerCase();
+                    tr.dataset.size = String(file.size);
+                    tr.dataset.date = String(file.lastModified);
+                    
+                    // Add badge if file is included for run
+                    if (includedForRun.some(f => f.name === file.name)) {
+                        const nameCell = tr.querySelector('td:nth-child(2)');
+                        const badge = document.createElement('span');
+                        badge.className = 'included-badge';
+                        badge.textContent = 'included';
+                        nameCell.appendChild(badge);
+                    }
                     
                     // Add click handler for row
                     tr.addEventListener('click', (e) => {
@@ -732,19 +867,267 @@
                     checkboxes.forEach(checkbox => {
                         checkbox.checked = selectAllCheckbox.checked;
                     });
+                    // Update action buttons state
+                    updateActionButtonsState();
                 });
                 
-                // Add run button functionality for Python files
-                const runButtons = filesList.querySelectorAll('.run-button');
-                runButtons.forEach(button => {
-                    button.addEventListener('click', async (e) => {
-                        e.stopPropagation();
-                        const filename = button.dataset.filename;
+                // Function to update action buttons state based on selections
+                function updateActionButtonsState() {
+                    const runButton = document.getElementById('runSelectedFiles');
+                    const downloadButton = document.getElementById('downloadSelectedFiles');
+                    const removeButton = document.getElementById('removeSelectedFiles');
+                    const includeButton = document.getElementById('includeInRunFiles');
+                    const checkedBoxes = filesList.querySelectorAll('.file-checkbox:checked');
+                    const hasSelection = checkedBoxes.length > 0;
+                    
+                    // Enable/disable remove and download buttons based on any selections
+                    removeButton.disabled = !hasSelection;
+                    downloadButton.disabled = !hasSelection;
+                    
+                    // Enable/disable include button based on any selection
+                    includeButton.disabled = !hasSelection;
+                    
+                    // Enable/disable run button based on if only Python files are selected
+                    let onlyPythonSelected = true;
+                    
+                    if (hasSelection) {
+                        // Check if all selected files are Python files
+                        checkedBoxes.forEach(checkbox => {
+                            const filename = checkbox.dataset.filename;
+                            const file = allFiles.find(f => f.name === filename);
+                            if (!file || !file.isPython) {
+                                onlyPythonSelected = false;
+                            }
+                        });
+                    } else {
+                        onlyPythonSelected = false; // No selection means run is disabled
+                    }
+                    
+                    runButton.disabled = !onlyPythonSelected;
+                }
+                
+                // Add sorting functionality to the table headers
+                const sortableHeaders = thead.querySelectorAll('.sortable');
+                sortableHeaders.forEach(header => {
+                    header.addEventListener('click', () => {
+                        const sortBy = header.dataset.sort;
+                        const isAsc = header.classList.contains('sort-asc');
+                        
+                        // Reset all headers
+                        sortableHeaders.forEach(h => {
+                            h.classList.remove('sort-active', 'sort-asc', 'sort-desc');
+                        });
+                        
+                        // Set active sort
+                        header.classList.add('sort-active');
+                        if (isAsc) {
+                            header.classList.add('sort-desc');
+                        } else {
+                            header.classList.add('sort-asc');
+                        }
+                        
+                        // Get all rows and convert to array for sorting
+                        const rows = Array.from(tbody.querySelectorAll('tr'));
+                        
+                        // Sort the rows based on the selected column
+                        rows.sort((a, b) => {
+                            let aValue = a.dataset[sortBy];
+                            let bValue = b.dataset[sortBy];
+                            
+                            // Special handling for size and date, which are numbers
+                            if (sortBy === 'size' || sortBy === 'date') {
+                                aValue = Number(aValue);
+                                bValue = Number(bValue);
+                            }
+                            
+                            if (aValue < bValue) return isAsc ? -1 : 1;
+                            if (aValue > bValue) return isAsc ? 1 : -1;
+                            return 0;
+                        });
+                        
+                        // Clear and re-append sorted rows
+                        tbody.innerHTML = '';
+                        rows.forEach(row => tbody.appendChild(row));
+                    });
+                });
+                
+                // Add event listeners to all checkboxes to update action buttons state
+                const checkboxes = filesList.querySelectorAll('.file-checkbox');
+                checkboxes.forEach(checkbox => {
+                    checkbox.addEventListener('change', updateActionButtonsState);
+                });
+                
+                // No more individual run buttons in the table rows
+                
+                // Add run selected files functionality
+                const runSelectedButton = document.getElementById('runSelectedFiles');
+                runSelectedButton.addEventListener('click', async () => {
+                    const selectedCheckboxes = filesList.querySelectorAll('.file-checkbox:checked');
+                    if (selectedCheckboxes.length === 0) return;
+                    
+                    // Get selected Python files
+                    const selectedPythonFiles = [];
+                    selectedCheckboxes.forEach(checkbox => {
+                        const filename = checkbox.dataset.filename;
                         const file = allFiles.find(f => f.name === filename);
                         if (file && file.isPython) {
-                            await executePythonFile(file);
+                            selectedPythonFiles.push(file);
                         }
                     });
+                    
+                    // Execute each Python file
+                    if (selectedPythonFiles.length > 0) {
+                        log(`Executing ${selectedPythonFiles.length} Python file(s)...`);
+                        for (const file of selectedPythonFiles) {
+                            await executePythonFile(file);
+                        }
+                    }
+                });
+                
+                // Add include in run button functionality
+                const includeButton = document.getElementById('includeInRunFiles');
+                includeButton.addEventListener('click', () => {
+                    const selectedCheckboxes = filesList.querySelectorAll('.file-checkbox:checked');
+                    if (selectedCheckboxes.length === 0) return;
+                    
+                    // Get selected files
+                    selectedCheckboxes.forEach(checkbox => {
+                        const filename = checkbox.dataset.filename;
+                        const file = allFiles.find(f => f.name === filename);
+                        if (file) {
+                            // Check if file is already included
+                            if (!includedForRun.some(f => f.name === file.name)) {
+                                includedForRun.push(file);
+                                log(`Included file for run: ${file.name}`, 'success');
+                            }
+                        }
+                    });
+                    
+                    // We don't need to update the status display anymore as it's hidden
+                    
+                    // Uncheck all checkboxes
+                    selectedCheckboxes.forEach(checkbox => {
+                        checkbox.checked = false;
+                    });
+                    
+                    // Uncheck "select all" checkbox if it exists
+                    const selectAllCheckbox = document.getElementById('selectAllFiles');
+                    if (selectAllCheckbox) {
+                        selectAllCheckbox.checked = false;
+                    }
+                    
+                    // Update action buttons state
+                    updateActionButtonsState();
+                    
+                    // Update the file list to show the included badges
+                    updateFileList();
+                });
+                
+                // Add download selected files functionality
+                const downloadButton = document.getElementById('downloadSelectedFiles');
+                downloadButton.addEventListener('click', () => {
+                    const selectedCheckboxes = filesList.querySelectorAll('.file-checkbox:checked');
+                    if (selectedCheckboxes.length === 0) return;
+                    
+                    // Get selected files
+                    const filesForDownload = [];
+                    selectedCheckboxes.forEach(checkbox => {
+                        const filename = checkbox.dataset.filename;
+                        const file = allFiles.find(f => f.name === filename);
+                        if (file) {
+                            filesForDownload.push(file);
+                        }
+                    });
+                    
+                    // Handle downloads based on count
+                    if (filesForDownload.length === 1) {
+                        // Single file download
+                        const file = filesForDownload[0];
+                        const downloadUrl = URL.createObjectURL(file);
+                        const a = document.createElement('a');
+                        a.href = downloadUrl;
+                        a.download = file.name;
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(downloadUrl);
+                        log(`Downloaded file: ${file.name}`, 'success');
+                    } else if (filesForDownload.length > 1) {
+                        // Multiple files - create a zip file
+                        // First, dynamically load JSZip via script tag
+                        log('Preparing to download multiple files as zip...', 'info');
+                        
+                        // Create script element for JSZip
+                        const script = document.createElement('script');
+                        script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                        script.onload = async () => {
+                            try {
+                                // JSZip is now available as a global variable
+                                const zip = new JSZip();
+                                
+                                // Add each file to the zip
+                                filesForDownload.forEach(file => {
+                                    zip.file(file.name, file);
+                                });
+                                
+                                // Generate the zip file
+                                const zipContent = await zip.generateAsync({ type: 'blob' });
+                                
+                                // Create download link
+                                const downloadUrl = URL.createObjectURL(zipContent);
+                                const a = document.createElement('a');
+                                a.href = downloadUrl;
+                                a.download = 'files.zip';
+                                document.body.appendChild(a);
+                                a.click();
+                                document.body.removeChild(a);
+                                URL.revokeObjectURL(downloadUrl);
+                                
+                                log(`Downloaded ${filesForDownload.length} files as zip`, 'success');
+                            } catch (error) {
+                                log(`Error creating zip file: ${error.message}`, 'error');
+                                console.error(error);
+                            }
+                        };
+                        
+                        script.onerror = () => {
+                            log('Failed to load JSZip library. Check your internet connection.', 'error');
+                        };
+                        
+                        // Add script to document to load it
+                        document.head.appendChild(script);
+                    }
+                });
+                
+                // Add remove selected files functionality
+                const removeButton = document.getElementById('removeSelectedFiles');
+                removeButton.addEventListener('click', () => {
+                    // Get all selected files
+                    const selectedCheckboxes = filesList.querySelectorAll('.file-checkbox:checked');
+                    if (selectedCheckboxes.length === 0) return;
+                    
+                    // Get filenames to remove
+                    const filenamesToRemove = Array.from(selectedCheckboxes).map(
+                        checkbox => checkbox.dataset.filename
+                    );
+                    
+                    // Remove files from allFiles array
+                    filenamesToRemove.forEach(filename => {
+                        const index = allFiles.findIndex(f => f.name === filename);
+                        if (index !== -1) {
+                            allFiles.splice(index, 1);
+                            log(`Deleted file: ${filename}`, 'warning');
+                        }
+                    });
+                    
+                    // If removed file was previewed, clear preview panel
+                    if (selectedFile && filenamesToRemove.includes(selectedFile.file.name)) {
+                        previewPanel.innerHTML = '<div class="empty-state">Select a File to Preview</div>';
+                        selectedFile = null;
+                    }
+                    
+                    // Update file list
+                    updateFileList();
                 });
             }
         }
@@ -793,24 +1176,38 @@
             // Read the file content
             const content = await file.text();
             
-            // Get selected data files to include (all checked files except Python files)
-            const selectedDataFiles = [];
+            // Combine included files and currently selected files
+            const dataFilesToInclude = [];
+            
+            // First add all files that were explicitly included for run
+            if (includedForRun.length > 0) {
+                log(`Using ${includedForRun.length} previously included files`);
+                includedForRun.forEach(includedFile => {
+                    if (!dataFilesToInclude.some(f => f.name === includedFile.name)) {
+                        dataFilesToInclude.push(includedFile);
+                    }
+                });
+            }
+            
+            // Then add any currently selected data files (all checked files except Python files)
+            const currentlySelectedFiles = [];
             document.querySelectorAll('#filesList .file-checkbox:checked').forEach(checkbox => {
                 const filename = checkbox.dataset.filename;
                 const dataFile = allFiles.find(f => f.name === filename && !f.isPython);
-                if (dataFile) {
-                    selectedDataFiles.push(dataFile);
+                if (dataFile && !dataFilesToInclude.some(f => f.name === dataFile.name)) {
+                    currentlySelectedFiles.push(dataFile);
+                    dataFilesToInclude.push(dataFile);
                 }
             });
             
-            if (selectedDataFiles.length > 0) {
-                log(`Including ${selectedDataFiles.length} data files`);
+            if (currentlySelectedFiles.length > 0) {
+                log(`Including ${currentlySelectedFiles.length} currently selected data files`);
             }
             
             // Run the Python script
             try {
-                // Execute the script with the selected files
-                const result = await runPythonScript(content, {}, selectedDataFiles);
+                // Execute the script with all included files
+                const result = await runPythonScript(content, {}, dataFilesToInclude);
                 
                 if (result.status === "complete") {
                     if (result.result) {
@@ -820,6 +1217,14 @@
                     // Process any modified files returned from Pyodide
                     if (result.modifiedFiles && result.modifiedFiles.length > 0) {
                         handleModifiedFiles(result.modifiedFiles);
+                    }
+                    
+                    // Reset the includedForRun array after execution
+                    // Only do this if there were actually included files
+                    if (includedForRun.length > 0) {
+                        log('Clearing included files after execution', 'info');
+                        includedForRun.length = 0;
+                        updateFileList(); // Update UI to remove badges
                     }
                 }
             } catch (error) {
