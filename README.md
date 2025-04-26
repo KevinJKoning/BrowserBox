@@ -6,7 +6,7 @@ Simple browser based sandbox for executing Python files. Just download the html 
 
 ## Workflow
 
-Simply drag and drop python scripts and any associated files to add them to the environment. Once you click run, the sandbox will spin up a webrunner with pyodide, automatically load the script's imports, and the file. The terminal will display printed output and any generated files will be copied back into the dropzone for you to preview or download.
+Drag and drop python scripts and any associated files to add them to the environment. Once you click run, the sandbox will spin up a webrunner with pyodide, automatically load the script's imports, and any selected files. The terminal will display printed output and any generated files will be copied back into the dropzone for you to preview or download.
 
 ## Things to Note
 
