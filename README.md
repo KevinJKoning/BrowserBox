@@ -1,6 +1,6 @@
 # BrowserBox
 
-Simple browser based sandbox for executing Python files.
+Simple browser based sandbox for executing Python files. Just download the html file and open it with any modern browser. (Simple as that).
 
 ![BrowserBox](BrowserBox.png)
 
