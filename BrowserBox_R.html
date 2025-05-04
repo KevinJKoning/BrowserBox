@@ -556,252 +556,6 @@
         };
     </script>
     
-    <script id="r-webworker" type="text/web-worker">
-        // webworker-webr.js
-        // Runs as a module worker (type: 'module')
-        
-        // Import WebR class using ES Module syntax
-        // The URL points to the module file (.mjs)
-        import { WebR } from 'https://webr.r-wasm.org/latest/webr.mjs';
-
-        let webR; // Holds the WebR instance
-        let webRReadyPromise; // Promise that resolves when WebR is initialized
-
-        // Async function to initialize WebR
-        async function initializeWebR() {
-            if (!webR) { 
-                 self.postMessage({ status: 'init', message: 'Loading WebR runtime (module)...' });
-                 try {
-                    webR = new WebR(); // Instantiate the imported class
-                    // self.webR = webR; // Optional: Assign to worker global scope if needed by other functions directly
-                    await webR.init();
-                    self.postMessage({ status: 'init', message: 'WebR runtime loaded (module).' });
-                 } catch (error) {
-                      console.error("WebR Initialization failed:", error);
-                      self.postMessage({ status: 'error', error: `WebR Initialization failed: ${error.message}` });
-                      throw error; // Re-throw to reject the promise
-                 }
-            }
-            return webR;
-        }
-
-        // Start initializing WebR as soon as the worker script loads
-        webRReadyPromise = initializeWebR();
-
-        // Handler for messages from the main thread
-        self.onmessage = async function(event) {
-            const { id, rCode, files } = event.data;
-            
-            let currentWebR; // Use a local variable for the instance in this message scope
-            try {
-                 // Wait for the initialization promise to resolve
-                 currentWebR = await webRReadyPromise; 
-            } catch (error) {
-                 // If initialization failed, post error and exit
-                 self.postMessage({ id, status: "error", error: `WebR initialization previously failed: ${error.message}` });
-                 return;
-            }
-
-            function sendStatus(status) { self.postMessage({ id, status }); }
-
-            let stdout = "";
-            let stderr = "";
-            const dataDir = '/home/webR/data'; // Define dataDir
-
-            try {
-                sendStatus("Setting up filesystem...");
-                await currentWebR.evalRVoid(`dir.create("${dataDir}", recursive = TRUE, showWarnings = FALSE)`);
-
-                if (files && files.length > 0) {
-                    sendStatus(`Loading ${files.length} file(s) into filesystem...`);
-                    for (const file of files) {
-                         try {
-                            await currentWebR.FS.writeFile(`${dataDir}/${file.name}`, new Uint8Array(file.data));
-                         } catch (fsError) { sendStatus(`FS Error writing ${file.name}: ${fsError.message}`); console.error(fsError); }
-                    }
-                }
-
-                sendStatus("Preparing execution environment...");
-                // Use R's sink() for output capture. Ensure directory exists.
-                await currentWebR.evalRVoid(`
-                    if (dir.exists("${dataDir}")) {
-                        setwd("${dataDir}") 
-                        
-                        # Close any potentially orphaned sinks first
-                        if(sink.number(type="output") > 0) sink(type = "output")
-                        if(sink.number(type="message") > 0) sink(type = "message")
-                        
-                        output_con <- file("stdout.log", open = "wt")
-                        error_con <- file("stderr.log", open = "wt")
-                        sink(output_con, type = "output")
-                        sink(error_con, type = "message") # Captures messages/warnings/errors
-                    } else {
-                        print("Error: Data directory not found for sink setup.")
-                    }
-                `);
-
-                sendStatus("Running R code...");
-                let result = null;
-                try {
-                    result = await currentWebR.evalR(rCode);
-                } finally {
-                    // Always close sinks and read captured output
-                    try {
-                        await currentWebR.evalRVoid(`
-                            # Close the sinks if they were opened
-                            if(exists("output_con")) {
-                                sink(type = "output") 
-                                sink(type = "message")
-                                close(output_con)
-                                close(error_con)
-                            }
-                        `);
-                    
-                        // Read captured output files if they exist
-                         try {
-                            stdout = await currentWebR.FS.readFile(`${dataDir}/stdout.log`, { encoding: 'utf8' }) || "";
-                            await currentWebR.FS.unlink(`${dataDir}/stdout.log`); 
-                         } catch (e) { /* File might not exist */ }
-                         try {
-                            stderr = await currentWebR.FS.readFile(`${dataDir}/stderr.log`, { encoding: 'utf8' }) || "";
-                            await currentWebR.FS.unlink(`${dataDir}/stderr.log`); 
-                         } catch (e) { /* File might not exist */ }
-                    } catch (captureError) {
-                         console.error("Error capturing/restoring R output:", captureError);
-                         stderr += "\n[Worker: Error capturing/restoring R output]";
-                    }
-                }
-
-                // ***** IMPORTANT: Resolve the main R script result FIRST *****
-                let resolvedResultValue;
-                try {
-                    // If result holds the RObject:
-                    console.log('[LOG] Resolving main R script execution result.');
-                    
-                    // Now convert the RObject result to a string safely
-                    // Check if it's null/undefined before calling toString
-                    resolvedResultValue = result ? await result.toString() : null;
-                    
-                    // Don't forget memory management for the result if not using shelters
-                    // await currentWebR.destroy(result); // Add this if using evalR and not using shelters
-                } catch (rExecutionError) {
-                    console.error("Error processing R script result:", rExecutionError);
-                    // Post error if processing the R result fails
-                    self.postMessage({ id, status: "error", error: `Error processing R script result: ${rExecutionError.message}`, stderr });
-                    return; // Stop further processing
-                }
-
-                // --- Now proceed with file collection ---
-                sendStatus("Collecting modified files...");
-                console.log('[LOG] Starting file collection process...'); // Added Log
-                const modifiedFiles = []; // Initialize as empty array
-                try {
-                    console.log(`[LOG] Attempting to list files in dataDir: ${dataDir}`); // Added Log
-                    // Use R's list.files() to get directory contents
-                    const listFilesCmd = `list.files(path='${dataDir}', recursive=FALSE)`;
-                    const dataFilesShelter = await currentWebR.evalR(listFilesCmd);
-                    console.log('[LOG] list.files() RObject received:', dataFilesShelter); // Added Log
-                    const dataFiles = await dataFilesShelter.toArray();
-                    console.log(`[LOG] Files listed in ${dataDir}:`, dataFiles); // Added Log
-
-                    // If list.files() succeeds, proceed to check and read files.
-                    console.log('[LOG] Starting loop through listed files...'); // Added Log
-                    for (const fileName of dataFiles.filter(name => name !== '.' && name !== '..')) {
-                        const path = `${dataDir}/${fileName}`;
-                        console.log(`[LOG] Processing file: ${fileName} at path: ${path}`); // Added Log
-                        try {
-                            console.log(`[LOG] Checking if ${path} is a directory...`); // Added Log
-                            const isDirectory = await currentWebR.evalRBoolean(`dir.exists('${path}')`);
-                            console.log(`[LOG] Is ${path} a directory? ${isDirectory}`); // Added Log
-
-                            if (!isDirectory) {
-                                console.log(`[LOG] ${path} is NOT a directory. Attempting to read file...`); // Added Log
-                                // IMPORTANT: Await readFile here to resolve the Promise before pushing.
-                                const fileData = await currentWebR.FS.readFile(path, { encoding: 'binary' });
-                                console.log(`[LOG] Successfully read file ${fileName}. Type of fileData: ${typeof fileData}, Is ArrayBuffer/View: ${ArrayBuffer.isView(fileData) || fileData instanceof ArrayBuffer}`); // Added Log
-                                // Check if fileData is still somehow a Promise (it shouldn't be after await)
-                                if (fileData instanceof Promise) {
-                                    console.error(`CRITICAL: fileData for ${fileName} IS STILL A PROMISE AFTER AWAIT!`);
-                                }
-                                modifiedFiles.push({ name: fileName, data: fileData });
-                                console.log(`[LOG] Pushed { name: ${fileName}, data: [${typeof fileData}] } to modifiedFiles. Current array:`, modifiedFiles); // Added Log
-                            } else {
-                                console.log(`[LOG] Skipping directory: ${fileName}`); // Added Log
-                            }
-                        } catch (fileError) {
-                            console.warn(`Error during check/read for entry ${fileName}:`, fileError); // Added Log
-                            stderr += `\n[Worker: Error processing entry ${fileName}: ${fileError.message}]`;
-                        }
-                        console.log(`[LOG] Finished processing entry: ${fileName}`); // Added Log
-                    }
-                    console.log('[LOG] Finished loop through listed files.'); // Added Log
-                } catch (fsError) {
-                    console.error("Error during list.files() or loop setup:", fsError); // Added Log
-                    // Handle errors during list.files() or subsequent processing
-                    if (fsError.message.includes('cannot open')) {
-                        // Directory likely doesn't exist or isn't accessible - often not a critical error here
-                        console.log(`[LOG] Data directory ${dataDir} not found or empty (handled error).`); // Added Log
-                    } else {
-                        // Log other filesystem errors
-                        console.error("Error listing or reading R filesystem:", fsError);
-                        stderr += `\n[Worker: Error listing/reading R filesystem: ${fsError.message}]`;
-                    }
-                }
-
-                // --- Prepare and send the final message ---
-                // Use the resolved value here
-                const resultString = resolvedResultValue ? resolvedResultValue.toString() : ""; // Ensure it's a string
-
-                // Convert stdout/stderr Uint8Arrays to strings if needed
-                let stdoutString = stdout;
-                let stderrString = stderr;
-                if (stdout instanceof Uint8Array) {
-                    const decoder = new TextDecoder();
-                    stdoutString = decoder.decode(stdout);
-                }
-                if (stderr instanceof Uint8Array) {
-                    const decoder = new TextDecoder();
-                    stderrString = decoder.decode(stderr);
-                }
-
-                console.log('[LOG] Preparing final message with resolved result and decoded streams.');
-                // Send the STRING versions of stdout/stderr
-                self.postMessage({
-                    id,
-                    status: "complete",
-                    result: resultString,
-                    stdout: stdoutString, // Send string
-                    stderr: stderrString, // Send string
-                    modifiedFiles
-                });
-                console.log('[LOG] postMessage call completed.');
-
-            } catch (error) {
-                 // Outer error (e.g., webR initialization, unexpected issues)
-                 console.error("WebR Worker error:", error);
-                 // Decode stderr here too for the error message if it's a Uint8Array
-                 let errorStderrString = "";
-                 try {
-                     const decoder = new TextDecoder();
-                     if (!stderr) { // Check if stderr was captured before the error
-                        const stderrLogContent = await currentWebR.FS.readFile(`${dataDir}/stderr.log`, { encoding: 'utf8' });
-                        errorStderrString = typeof stderrLogContent === 'string' ? stderrLogContent : decoder.decode(stderrLogContent || new Uint8Array());
-                     } else {
-                        errorStderrString = stderr instanceof Uint8Array ? decoder.decode(stderr) : stderr;
-                     }
-                     // Attempt to unlink log file only if it was potentially read
-                     if (!stderr) await currentWebR.FS.unlink(`${dataDir}/stderr.log`); // [1]
-                 } catch (e) {
-                     console.warn("Could not retrieve or clean up stderr.log in error handler:", e);
-                     if (typeof errorStderrString !== 'string') errorStderrString = "";
-                 }
-                 try { await currentWebR.evalRVoid(`if(sink.number()>0) sink()`); } catch(e) { /* ignore */ } // [2]
-
-                 self.postMessage({ id, status: "error", error: error.message || "Unknown error", stderr: errorStderrString }); // Send string
-            }
-        };
-    </script>
-
     <script>
         // --- Global State ---
         const allFiles = [];
@@ -810,9 +564,12 @@
         
         // Persistent workers & message handling
         let pyodideWorker = null;
-        let webRWorker = null;
         const workerPromises = {}; // Store { id: { resolve, reject, workerType } }
         let messageIdCounter = 1;
+
+        // WebR instance (main thread)
+        let webRInstance = null;
+        let webRInitPromise = null; // To track initialization
 
         // --- DOM Elements ---
         const filesDropZone = document.getElementById('filesDropZone');
@@ -821,8 +578,8 @@
         const terminalContent = document.getElementById('terminalContent');
         const clearTerminalBtn = document.getElementById('clearTerminal');
 
-        // --- Worker Initialization & Management ---
-        
+        // --- Worker Initialization & Management (Pyodide Only) ---
+
         function getPyodideWorker() {
             if (!pyodideWorker) {
                 log("Initializing Python (Pyodide) worker...");
@@ -830,45 +587,21 @@
                     const workerScript = document.getElementById('pyodide-webworker').textContent;
                     const blob = new Blob([workerScript], { type: 'application/javascript' });
                     const workerUrl = URL.createObjectURL(blob);
-                    // Pyodide uses a classic worker
-                    pyodideWorker = new Worker(workerUrl); 
-                    
+                    pyodideWorker = new Worker(workerUrl);
+
                     pyodideWorker.onmessage = handleWorkerMessage;
-                    pyodideWorker.onerror = (event) => handleWorkerError(event, 'python');
-                    URL.revokeObjectURL(workerUrl); // Clean up blob URL after worker creation
+                    pyodideWorker.onerror = (event) => handleWorkerError(event, 'python'); // Only Python errors now
+                    URL.revokeObjectURL(workerUrl);
                 } catch (error) {
                      log(`Failed to create Pyodide worker: ${error.message}`, 'error');
                      console.error("Pyodide Worker Creation Error:", error);
-                     pyodideWorker = null; // Ensure it's null if creation failed
+                     pyodideWorker = null;
                 }
             }
             return pyodideWorker;
         }
 
-        function getWebRWorker() {
-            if (!webRWorker) {
-                log("Initializing R (WebR) worker (as module)...");
-                 try {
-                    const workerScript = document.getElementById('r-webworker').textContent;
-                    const blob = new Blob([workerScript], { type: 'application/javascript' });
-                    const workerUrl = URL.createObjectURL(blob);
-                    
-                    // *** Create as a MODULE worker ***
-                    webRWorker = new Worker(workerUrl, { type: 'module' }); 
-
-                    webRWorker.onmessage = handleWorkerMessage;
-                    webRWorker.onerror = (event) => handleWorkerError(event, 'r');
-                    URL.revokeObjectURL(workerUrl); // Clean up blob URL
-                 } catch (error) {
-                     log(`Failed to create WebR worker: ${error.message}`, 'error');
-                     console.error("WebR Worker Creation Error:", error);
-                     webRWorker = null;
-                 }
-            }
-            return webRWorker;
-        }
-        
-        function handleWorkerError(event, workerType) {
+        function handleWorkerError(event, workerType) { // Simplified for Python only
              log(`${workerType.toUpperCase()} Worker Error: ${event.message}`, 'error');
              console.error(`${workerType.toUpperCase()} Worker Error Event:`, event);
              // Reject all pending promises for this worker type
@@ -878,48 +611,45 @@
                      delete workerPromises[id];
                  }
              });
-             // Nullify the worker instance so it can be recreated if needed
+             // Nullify the worker instance
              if (workerType === 'python') pyodideWorker = null;
-             if (workerType === 'r') webRWorker = null;
         }
 
-        // --- Message Handling ---
+        // --- Message Handling (Pyodide Only) ---
 
-        function handleWorkerMessage(event) {
+        function handleWorkerMessage(event) { // Simplified for Python only
             const data = event.data;
             const id = data.id;
 
             if (data.status === 'init') {
-                 log(`Worker: ${data.message}`);
+                 log(`Pyodide Worker: ${data.message}`);
                  return;
             }
-            
+
             const promiseInfo = id ? workerPromises[id] : null;
-            
+
             if (promiseInfo) {
-                const { resolve, reject, workerType } = promiseInfo;
-                
+                const { resolve, reject, workerType } = promiseInfo; // workerType will always be 'python' here
+
                 if (data.status === "complete") {
-                    log(`Execution complete (ID: ${id}, Type: ${workerType})`, 'success');
+                    log(`Pyodide execution complete (ID: ${id})`, 'success');
                     if (data.stdout) log(`Stdout:\n${data.stdout}`);
                     if (data.stderr) log(`Stderr:\n${data.stderr}`, data.stderr.trim() ? 'warning' : 'info');
-                    if (data.result != null) log(`Result: ${data.result}`); // Check for null/undefined explicitly
+                    if (data.result != null) log(`Result: ${data.result}`);
                     resolve(data);
-                    delete workerPromises[id]; // Clean up handled promise
+                    delete workerPromises[id];
                 } else if (data.status === "error") {
-                    log(`Execution Error (ID: ${id}, Type: ${workerType}): ${data.error}`, 'error');
+                    log(`Pyodide Execution Error (ID: ${id}): ${data.error}`, 'error');
                     if (data.stderr) log(`Stderr:\n${data.stderr}`, 'error');
-                    reject(new Error(data.error || "Unknown worker error")); 
+                    reject(new Error(data.error || "Unknown Pyodide worker error"));
                     delete workerPromises[id];
                 } else {
-                    // General status update
-                    log(`Worker Status (ID: ${id}, Type: ${workerType}): ${data.status}`);
+                    log(`Pyodide Worker Status (ID: ${id}): ${data.status}`);
                 }
             } else if (data.status === "error" && !id) {
-                // Handle initialization errors without a specific message ID
-                log(`Worker Initialization Error: ${data.error}`, 'error');
+                log(`Pyodide Worker Initialization Error: ${data.error}`, 'error');
             } else {
-                 console.warn("Received worker message with unknown or missing ID:", data);
+                 console.warn("Received Pyodide worker message with unknown or missing ID:", data);
             }
         }
 
@@ -927,50 +657,74 @@
             return messageIdCounter++;
         }
 
-        async function postTaskToWorker(worker, taskData, workerType) {
+        // Renamed and simplified for Pyodide only
+        async function postTaskToPyodideWorker(taskData) {
+             const worker = getPyodideWorker();
              if (!worker) {
-                 log(`Cannot post task: ${workerType} worker is not available.`, 'error');
-                 return Promise.reject(new Error(`${workerType} worker not available.`));
+                 log(`Cannot post task: Pyodide worker is not available.`, 'error');
+                 return Promise.reject(new Error(`Pyodide worker not available.`));
              }
             const id = generateId();
             taskData.id = id;
-            
+
             return new Promise((resolve, reject) => {
-                workerPromises[id] = { resolve, reject, workerType };
+                // workerType is implicitly 'python' now
+                workerPromises[id] = { resolve, reject, workerType: 'python' };
                  try {
                     worker.postMessage(taskData);
                  } catch (postError) {
-                     log(`Error posting message to ${workerType} worker: ${postError.message}`, 'error');
+                     log(`Error posting message to Pyodide worker: ${postError.message}`, 'error');
                      console.error("Post Message Error:", postError);
                      reject(postError);
                      delete workerPromises[id];
                  }
             });
         }
-        
+
+        // --- WebR Initialization (Main Thread) ---
+        async function initializeWebRMain() {
+            // Only attempt initialization if it hasn't started or failed previously
+            if (!webRInstance && !webRInitPromise) {
+                log("Initializing R (WebR) in main thread...");
+                webRInitPromise = import('https://webr.r-wasm.org/latest/webr.mjs')
+                    .then(async ({ WebR }) => {
+                        try {
+                            const webR = new WebR({ /* Optional config */ });
+                            log("WebR Class loaded. Initializing runtime...");
+                            await webR.init();
+                            webRInstance = webR; // Assign to global instance
+                            log("WebR runtime initialized successfully.", 'success');
+                            return webRInstance; // Resolve the promise with the instance
+                        } catch (error) {
+                            log(`WebR Initialization failed: ${error.message}`, 'error');
+                            console.error("WebR Initialization Error:", error);
+                            webRInitPromise = null; // Reset promise to allow retry on next call
+                            throw error; // Propagate error
+                        }
+                    })
+                    .catch(error => {
+                        log(`Failed to load WebR module: ${error.message}`, 'error');
+                        console.error("WebR Module Load Error:", error);
+                        webRInitPromise = null; // Reset promise
+                        throw error; // Propagate error
+                    });
+            }
+            // Return the promise that resolves with the instance
+            return webRInitPromise;
+        }
+
         // --- Logging ---
         function log(message, type = 'info') {
-            // Check if terminal content area exists
-            if (!terminalContent) {
-                console.warn("Terminal content area not found. Logging to console instead:", message);
-                return;
-            }
-            
             const timestamp = new Date().toLocaleTimeString();
             const logElement = document.createElement('div');
-            // Basic sanitation to prevent HTML injection
             const safeMessage = message.toString().replace(/</g, "&lt;").replace(/>/g, "&gt;");
-            logElement.innerHTML = `[${timestamp}] ${safeMessage}`; 
-            
-            // Apply class based on type
-            logElement.classList.add('log-entry', type); // Add type as a class
-
+            logElement.innerHTML = `[${timestamp}] ${safeMessage}`;
+            logElement.classList.add('log-entry', type);
             terminalContent.appendChild(logElement);
-            // Scroll to bottom
             terminalContent.scrollTop = terminalContent.scrollHeight;
         }
 
-        clearTerminalBtn?.addEventListener('click', () => { // Add null check
+        clearTerminalBtn?.addEventListener('click', () => {
             if (terminalContent) terminalContent.innerHTML = '';
             log('Terminal cleared');
         });
@@ -978,25 +732,157 @@
         // --- Core Execution Logic ---
 
         async function runPythonScript(scriptContent, additionalFiles = []) {
-            const worker = getPyodideWorker(); // Get (and potentially initialize) worker
+            const worker = getPyodideWorker();
             if (!worker) return Promise.reject("Pyodide worker failed to initialize.");
-            
+
             log(`Sending Python task to worker...`);
             const fileData = await Promise.all(additionalFiles.map(async (file) => ({
                 name: file.name, data: await file.arrayBuffer()
             })));
-            return postTaskToWorker(worker, { python: scriptContent, files: fileData }, 'python');
+            return postTaskToPyodideWorker({ python: scriptContent, files: fileData });
         }
 
+        // Rewritten runRScript to use WebR's native message handling
         async function runRScript(scriptContent, additionalFiles = []) {
-            const worker = getWebRWorker(); // Get (and potentially initialize) worker
-            if (!worker) return Promise.reject("WebR worker failed to initialize.");
+            log(`Attempting to run R script...`, 'r');
 
-            log(`Sending R task to worker...`, 'r'); 
-            const fileData = await Promise.all(additionalFiles.map(async (file) => ({
-                name: file.name, data: await file.arrayBuffer()
-            })));
-            return postTaskToWorker(worker, { rCode: scriptContent, files: fileData }, 'r');
+            if (!webRInstance) {
+                log("WebR not initialized. Attempting initialization...", 'r');
+                try {
+                    await initializeWebRMain();
+                    if (!webRInstance) throw new Error("WebR initialization failed after attempt.");
+                } catch (initError) {
+                    log(`Cannot run R script, initialization failed: ${initError.message}`, 'error');
+                    throw initError;
+                }
+            }
+
+            const currentWebR = webRInstance;
+            let stdout = "";
+            let stderr = "";
+            const dataDir = '/home/webR/data';
+            
+            try {
+                log("Setting up R filesystem...", 'r');
+                // Create data directory and set working directory
+                await currentWebR.evalRVoid(`dir.create("${dataDir}", recursive = TRUE, showWarnings = FALSE)`);
+                await currentWebR.evalRVoid(`setwd("${dataDir}")`);
+
+                // Load additional files into filesystem
+                if (additionalFiles && additionalFiles.length > 0) {
+                    log(`Loading ${additionalFiles.length} file(s) into R filesystem...`, 'r');
+                    for (const file of additionalFiles) {
+                        try {
+                            const data = await file.arrayBuffer();
+                            await currentWebR.FS.writeFile(`${dataDir}/${file.name}`, new Uint8Array(data));
+                        } catch (fsError) {
+                            log(`FS Error writing ${file.name}: ${fsError.message}`, 'warning');
+                            console.error(fsError);
+                        }
+                    }
+                }
+
+                log("Executing R code...", 'r');
+                
+                // Set up a message queue to capture output
+                // We'll use WebR's message passing system to get stdout/stderr
+                const messageQueue = [];
+                
+                // Start a task to read messages
+                const messageReader = (async () => {
+                    try {
+                        for (;;) {
+                            const message = await currentWebR.read();
+                            messageQueue.push(message);
+                            
+                            // If we receive a closed message, break the loop
+                            if (message.type === 'closed') break;
+                        }
+                    } catch (error) {
+                        console.error("Error reading WebR messages:", error);
+                    }
+                })();
+                
+                // Execute the R code
+                let resultObj = null;
+                try {
+                    // Write the script to execute it
+                    resultObj = await currentWebR.evalR(scriptContent);
+                } finally {
+                    // Stop the message reader with a small delay to ensure all messages are captured
+                    await new Promise(resolve => setTimeout(resolve, 100));
+                    
+                    // Process the captured output messages
+                    for (const message of messageQueue) {
+                        if (message.type === 'stdout') {
+                            stdout += message.data + '\n';
+                        } else if (message.type === 'stderr') {
+                            stderr += message.data + '\n';
+                        }
+                    }
+                    
+                    // Trim trailing newlines
+                    stdout = stdout.trim();
+                    stderr = stderr.trim();
+                }
+
+                log("R code execution finished. Processing results...", 'r');
+
+                // Convert the result to string if available
+                let resultString = null;
+                if (resultObj && resultObj.type !== 'null') {
+                    try {
+                        resultString = await resultObj.toString();
+                    } catch (resultError) {
+                        log(`Error converting R result to string: ${resultError.message}`, 'warning');
+                        stderr += (stderr ? '\n' : '') + `[MainThread: Error converting R result: ${resultError.message}]`;
+                    }
+                }
+
+                log("Collecting modified files from R filesystem...", 'r');
+                const modifiedFiles = [];
+                try {
+                    const listFilesCmd = `list.files(path='${dataDir}', recursive=FALSE)`;
+                    const dataFilesRObject = await currentWebR.evalR(listFilesCmd);
+                    const dataFiles = await dataFilesRObject.toArray();
+
+                    for (const fileName of dataFiles.filter(name => name !== '.' && name !== '..')) {
+                        const path = `${dataDir}/${fileName}`;
+                        try {
+                            const isDirectory = await currentWebR.evalRBoolean(`dir.exists('${path}')`);
+                            if (!isDirectory) {
+                                const fileData = await currentWebR.FS.readFile(path, { encoding: 'binary' });
+                                modifiedFiles.push({ name: fileName, data: fileData });
+                            }
+                        } catch (fileError) {
+                            log(`Error reading back file ${fileName}: ${fileError.message}`, 'warning');
+                            stderr += (stderr ? '\n' : '') + `[MainThread: Error reading file ${fileName}: ${fileError.message}]`;
+                        }
+                    }
+                } catch (fsError) {
+                    log(`Error listing files in ${dataDir}: ${fsError.message}`, 'warning');
+                    stderr += (stderr ? '\n' : '') + `[MainThread: Error listing files: ${fsError.message}]`;
+                }
+
+                // Log the outputs
+                if (stdout) log(`R Stdout:\n${stdout}`, 'r');
+                if (stderr) log(`R Stderr:\n${stderr}`, stderr.trim() ? 'warning' : 'info');
+                if (resultString != null) log(`R Result: ${resultString}`);
+
+                return {
+                    status: "complete",
+                    result: resultString,
+                    stdout: stdout,
+                    stderr: stderr,
+                    modifiedFiles: modifiedFiles
+                };
+
+            } catch (error) {
+                log(`R Execution Error: ${error.message}`, 'error');
+                console.error("WebR Execution Error:", error);
+                stderr += (stderr ? '\n' : '') + `[MainThread: Execution failed: ${error.message}]`;
+                throw new Error(`R Execution Failed: ${error.message || 'Unknown error'}`);
+            }
         }
 
         // --- File Handling & UI ---
@@ -1024,23 +910,21 @@
         function getFileIcon(file) {
             if (file.isPython) return '<span class="file-icon python">🐍</span>';
             if (file.isR) return '<span class="file-icon r">🇷</span>'; 
-            // Basic data icons (can be expanded)
             const ext = file.name.split('.').pop().toLowerCase();
             if (['csv', 'tsv', 'txt'].includes(ext)) return '<span class="file-icon data">📄</span>'; 
             if (['parquet', 'json', 'xml', 'yaml', 'yml'].includes(ext)) return '<span class="file-icon data">📦</span>'; 
             if (['png', 'jpg', 'jpeg', 'gif', 'svg', 'webp'].includes(ext)) return '<span class="file-icon data">🖼️</span>'; 
-            return '<span class="file-icon">❓</span>'; // Default
+            return '<span class="file-icon">❓</span>';
         }
 
         function updateFileList() {
             const instructionsElement = document.getElementById('filesInstructions');
             if (instructionsElement) instructionsElement.style.display = allFiles.length > 0 ? 'none' : 'flex';
             
-            if (!filesList) return; // Guard if element doesn't exist
-            filesList.innerHTML = ''; // Clear previous list
+            if (!filesList) return;
+            filesList.innerHTML = '';
             
             if (allFiles.length > 0) {
-                // Action buttons
                 const actionButtonsHTML = `
                     <div class="action-buttons">
                         <button id="runSelectedFiles" class="btn btn-run" disabled>Run</button>
@@ -1050,7 +934,6 @@
                     </div>`;
                 filesList.insertAdjacentHTML('beforeend', actionButtonsHTML);
 
-                // Table
                 const tableHTML = `
                     <table class="file-table">
                         <thead>
@@ -1070,7 +953,7 @@
                     const tr = document.createElement('tr');
                     tr.className = `file-row ${file.isR ? 'is-r' : ''}`; 
                     const date = new Date(file.lastModified);
-                    const dateString = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); // Shorter time
+                    const dateString = date.toLocaleDateString() + ' ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
                     const sizeString = file.size < 1024 ? `${file.size} B` :
                                      file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} KB` :
                                      `${(file.size / (1024 * 1024)).toFixed(1)} MB`;
@@ -1091,14 +974,13 @@
                     tr.dataset.date = String(file.lastModified);
                     
                     tr.addEventListener('click', (e) => {
-                        if (e.target.type !== 'checkbox' && !e.target.closest('button')) { // Avoid clicks on checkbox/buttons
+                        if (e.target.type !== 'checkbox' && !e.target.closest('button')) {
                             selectFile(file);
                         }
                     });
-                    tbody?.appendChild(tr); // Add null check for tbody
+                    tbody?.appendChild(tr);
                 });
 
-                // --- Add Event Listeners (using event delegation where possible) ---
                 filesList.addEventListener('change', (e) => {
                     if (e.target.matches('#selectAllFiles')) {
                          filesList.querySelectorAll('.file-checkbox').forEach(cb => cb.checked = e.target.checked);
@@ -1119,7 +1001,7 @@
             } else {
                  if(selectedFile) clearPreview();
             }
-             updateActionButtonsState(); // Update button states initially
+             updateActionButtonsState();
         }
         
         function handleSort(header) {
@@ -1130,9 +1012,7 @@
              const currentIsAsc = header.classList.contains('sort-asc');
              const isAsc = !currentIsAsc; 
 
-             // Reset others
              filesList.querySelectorAll('.sortable').forEach(h => h.classList.remove('sort-active', 'sort-asc', 'sort-desc'));
-             // Set this header
              header.classList.add('sort-active', isAsc ? 'sort-asc' : 'sort-desc');
 
              const rows = Array.from(tbody.querySelectorAll('tr'));
@@ -1144,7 +1024,7 @@
                  if (aValue > bValue) return isAsc ? 1 : -1;
                  return 0;
              });
-             rows.forEach(row => tbody.appendChild(row)); // Re-append sorted
+             rows.forEach(row => tbody.appendChild(row));
         }
 
         function getSelectedFiles() {
@@ -1159,7 +1039,7 @@
             const downloadButton = document.getElementById('downloadSelectedFiles');
             const removeButton = document.getElementById('removeSelectedFiles');
             
-            if (!runButton) return; // Buttons don't exist if no files
+            if (!runButton) return;
 
             const selected = getSelectedFiles();
             const hasSelection = selected.length > 0;
@@ -1192,7 +1072,6 @@
              const type = isPythonRun ? 'Python' : 'R';
 
              log(`Executing ${selectedScripts.length} ${type} script(s)...`);
-             // Run sequentially for clearer logs, could be parallelized with Promise.all
              for (const file of selectedScripts) {
                  await runner(file).catch(err => log(`Execution failed for ${file.name}: ${err.message}`, 'error')); 
              }
@@ -1212,11 +1091,10 @@
                  }
              });
              if (includedNew) {
-                  // Clear selections and update UI
                   filesList?.querySelectorAll('.file-checkbox:checked').forEach(cb => cb.checked = false);
                   const selectAll = document.getElementById('selectAllFiles');
                   if (selectAll) selectAll.checked = false;
-                  updateFileList(); // Re-render to show badges & update buttons
+                  updateFileList();
              }
         }
         
@@ -1228,7 +1106,7 @@
                  const url = URL.createObjectURL(blob);
                  const a = document.createElement('a');
                  a.href = url; a.download = filename; a.click(); 
-                 setTimeout(() => URL.revokeObjectURL(url), 100); // Delay revoke slightly
+                 setTimeout(() => URL.revokeObjectURL(url), 100);
                  log(`Downloaded: ${filename}`, 'success');
              };
 
@@ -1248,7 +1126,7 @@
                  };
                  script.onerror = () => log('Failed to load JSZip library.', 'error');
                  document.head.appendChild(script);
-                 script.remove(); // Clean up script tag after loading
+                 script.remove();
              }
         }
 
@@ -1264,7 +1142,6 @@
                      fileRemoved = true;
                  }
              }
-             // Remove from included list too
              for (let i = includedForRun.length - 1; i >= 0; i--) {
                  if (selectedNames.includes(includedForRun[i].name)) {
                      includedForRun.splice(i, 1);
@@ -1278,7 +1155,6 @@
         }
         
          function handleModifiedFiles(modifiedFiles) {
-            // (Code from previous version - unchanged)
              if (!modifiedFiles || modifiedFiles.length === 0) return;
             log(`Processing ${modifiedFiles.length} modified/new files from execution...`, 'info');
 
@@ -1307,39 +1183,38 @@
                  if (selectedFile && modifiedFiles.some(mf => mf.name === selectedFile.file.name)) {
                      const updatedFile = allFiles.find(f => f.name === selectedFile.file.name);
                      if (updatedFile) {
-                         selectFile(updatedFile); // Re-select to refresh preview
+                         selectFile(updatedFile);
                          log(`Refreshed preview for updated file: ${updatedFile.name}`);
                      }
                  }
             }
          }
 
-        // Execute Python File (main logic)
         async function executePythonFile(file) {
             log(`Executing Python file: ${file.name}...`);
             const content = await file.text();
-            const dataFiles = [...includedForRun]; 
-            getSelectedFiles().forEach(selected => { // Add selected data files if not already included
+            const dataFiles = [...includedForRun];
+            getSelectedFiles().forEach(selected => {
                 if (selected.isData && !dataFiles.some(df => df.name === selected.name)) {
                     dataFiles.push(selected);
                 }
             });
             if (dataFiles.length > 0) log(`Including ${dataFiles.length} data file(s) for Python run.`);
-            
+
             try {
                 const result = await runPythonScript(content, dataFiles);
                 if (result.modifiedFiles?.length > 0) handleModifiedFiles(result.modifiedFiles);
+                log(`Python execution successful for ${file.name}.`, 'success');
             } catch (error) {
-                log(`Failed Python execution for ${file.name}: ${error.message || error}`, 'error');
+                log(`Failed Python execution task for ${file.name}. See previous errors.`, 'error');
             }
         }
 
-        // Execute R File (main logic)
         async function executeRFile(file) {
             log(`Executing R file: ${file.name}...`, 'r');
             const content = await file.text();
-            const dataFiles = [...includedForRun]; 
-            getSelectedFiles().forEach(selected => { // Add selected data files
+            const dataFiles = [...includedForRun];
+            getSelectedFiles().forEach(selected => {
                 if (selected.isData && !dataFiles.some(df => df.name === selected.name)) {
                     dataFiles.push(selected);
                 }
@@ -1349,20 +1224,20 @@
             try {
                 const result = await runRScript(content, dataFiles);
                 if (result.modifiedFiles?.length > 0) handleModifiedFiles(result.modifiedFiles);
+                log(`R execution successful for ${file.name}.`, 'success');
             } catch (error) {
-                log(`Failed R execution for ${file.name}: ${error.message || error}`, 'error');
+                log(`Failed R execution task for ${file.name}. See previous errors.`, 'error');
             }
         }
-        
+
         // --- File Preview ---
         function selectFile(file) {
             selectedFile = { file }; 
-            // Highlight row
             document.querySelectorAll('.file-row').forEach(row => {
                  const nameCell = row.querySelector('td:nth-child(2)');
                  row.classList.toggle('active', nameCell && nameCell.textContent.includes(file.name));
             });
-            previewFile(file); // Trigger preview
+            previewFile(file);
         }
         
         function clearPreview() {
@@ -1371,7 +1246,6 @@
         }
 
         async function previewParquetFile(file) {
-            // (Code from previous version - unchanged)
             log(`Loading parquet preview for ${file.name}...`);
             if (!previewPanel) return;
             previewPanel.innerHTML = `<div>Loading parquet file: ${file.name}...</div>`; 
@@ -1405,7 +1279,6 @@
         }
         
         function previewHtmlFile(content) {
-             // (Code from previous version - unchanged)
             if (!previewPanel) return;
              const iframeContainer = document.createElement('div');
              iframeContainer.style.cssText = 'width: 100%; height: 500px; border: 1px solid #ddd; border-radius: 4px; overflow: hidden;';
@@ -1420,9 +1293,8 @@
         }
         
         function previewFile(file) {
-            // (Code largely from previous version - minor tweaks)
-             if (!previewPanel) return;
-            previewPanel.innerHTML = ''; // Clear
+            if (!previewPanel) return;
+             previewPanel.innerHTML = '';
 
             const header = document.createElement('div');
             header.style.cssText = 'padding-bottom: 15px; border-bottom: 1px solid #eee; margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;';
@@ -1433,7 +1305,7 @@
                 runButton.textContent = `Run ${file.isPython ? 'Python' : 'R'} Script`;
                 runButton.className = `run-button ${file.isR ? 'run-r' : ''}`; 
                 runButton.addEventListener('click', (e) => { 
-                    e.stopPropagation(); // Prevent row selection
+                    e.stopPropagation();
                     if (file.isPython) executePythonFile(file); else if (file.isR) executeRFile(file); 
                 });
                 header.appendChild(runButton);
@@ -1468,7 +1340,7 @@
                  img.onload = () => URL.revokeObjectURL(img.src); 
                  previewPanel.appendChild(img);
                  log(`Previewing image: ${file.name}`);
-            } else if (file.size > 5 * 1024 * 1024) { // Limit text preview size
+            } else if (file.size > 5 * 1024 * 1024) {
                  previewPanel.innerHTML += `<div class="warning">File is large (${(file.size / (1024*1024)).toFixed(1)} MB). Text preview skipped.</div>`;
                  log(`Skipping text preview for large file: ${file.name}`, 'warning');
             } else if (['py', 'r', 'txt', 'json', 'csv', 'log', 'md', 'yaml', 'yml', 'sql'].includes(ext) || file.type.startsWith('text/')) {
@@ -1483,45 +1355,38 @@
         function setupDropZone(dropZone) {
             if (!dropZone) return;
             
-            // Prevent default drag behaviors
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
                 dropZone.addEventListener(eventName, (e) => { e.preventDefault(); e.stopPropagation(); }, false);
             });
 
-            // Highlight on drag enter/over
             ['dragenter', 'dragover'].forEach(eventName => {
                 dropZone.addEventListener(eventName, () => dropZone.classList.add('active'), false);
             });
 
-            // Unhighlight on drag leave/drop
             ['dragleave', 'drop'].forEach(eventName => {
                 dropZone.addEventListener(eventName, () => dropZone.classList.remove('active'), false);
             });
             
-            // Handle dropped files
             dropZone.addEventListener('drop', (e) => {
                 handleFileSelect(e.dataTransfer.files);
             }, false);
 
-            // Handle click to upload
             dropZone.addEventListener('click', (e) => {
-                 // Only trigger if clicking the instructions area or the zone itself, not the file list
                  if (e.target.closest('#filesInstructions') || e.target === dropZone) {
                      const fileInput = document.createElement('input');
                      fileInput.type = 'file';
                      fileInput.multiple = true;
-                     fileInput.style.display = 'none'; // Hide the input
+                     fileInput.style.display = 'none';
                      fileInput.onchange = (ev) => handleFileSelect(ev.target.files);
-                     document.body.appendChild(fileInput); // Add to body to ensure it works on all browsers
+                     document.body.appendChild(fileInput);
                      fileInput.click();
-                     document.body.removeChild(fileInput); // Clean up input element after loading
+                     document.body.removeChild(fileInput);
                  }
             });
         }
 
         // --- Initialization ---
         function init() {
-            // Ensure DOM is ready (though script at end usually suffices)
              if (document.readyState === 'loading') {
                  document.addEventListener('DOMContentLoaded', runInit);
              } else {
@@ -1532,12 +1397,12 @@
         function runInit() {
              setupDropZone(filesDropZone);
              log('App initialized. Ready for Python (.py) and R (.R) files.');
-             // Optional: Pre-warm workers on load (can increase initial load time)
-             // setTimeout(() => getPyodideWorker(), 100); 
-             // setTimeout(() => getWebRWorker(), 200); 
+             initializeWebRMain().catch(err => {
+                 console.error("Initial WebR setup failed on load:", err);
+                 log("WebR initialization failed on startup. Will retry on first R execution.", "warning");
+             });
         }
 
-        // Start the app
         init();
     </script>
 </body>
