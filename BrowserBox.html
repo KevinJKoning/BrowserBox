@@ -30,17 +30,54 @@
             color: var(--text-color);
             height: 100vh;
             padding: 20px;
+            margin: 0;
+            box-sizing: border-box;
         }
 
         .container {
             display: grid;
-            grid-template-columns: 1fr 1.5fr 1.5fr; /* python-scripts, data-files, preview */
-            grid-template-rows: 2fr 1fr; /* main-content, terminal */
+            grid-template-columns: 35% 65%; /* left side 35%, right side 65% */
+            grid-template-rows: 1fr; /* single row */
             grid-template-areas:
-                "python-scripts data-files preview"
-                "terminal terminal terminal";
+                "left-column right-column";
             gap: 16px;
             height: calc(100vh - 40px);
+            max-height: calc(100vh - 40px);
+            width: calc(100vw - 40px);
+            max-width: 1400px;
+            margin: 0 auto;
+            box-sizing: border-box;
+        }
+
+        .left-column {
+            grid-area: left-column;
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr 1fr 1fr; /* three equal sections */
+            grid-template-areas:
+                "file-drop-zone"
+                "script-zone"
+                "file-output-zone";
+            gap: 16px;
+            height: 100%;
+            max-height: 100%;
+            overflow: hidden;
+        }
+
+        .right-column {
+            grid-area: right-column;
+            display: grid;
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr 1fr 1fr; /* three equal sections to match left */
+            grid-template-areas:
+                "preview"
+                "preview"
+                "terminal";
+            gap: 16px;
+            height: 100%;
+            max-height: 100%;
+            min-height: 0;
+            overflow: hidden;
         }
 
         .drop-zone {
@@ -51,17 +88,17 @@
             display: flex;
             flex-direction: column;
             transition: all 0.3s ease;
-            overflow: auto;
+            overflow: hidden;
+            height: 100%;
+            max-height: 100%;
+            min-height: 0;
         }
         
-        .drop-zone #pythonInstructions,
-        .drop-zone #dataInstructions {
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            align-items: center;
-            text-align: center;
-            height: 100%;
+        .drop-zone .instructions, .output-panel .instructions {
+            display: block;
+            text-align: left;
+            flex-shrink: 0;
+            margin-bottom: 8px;
         }
 
         .drop-zone:hover {
@@ -73,12 +110,12 @@
             background-color: var(--drop-zone-hover);
         }
 
-        .drop-zone p {
+        .drop-zone p, .output-panel p {
             margin-bottom: 8px;
-            font-weight: 500;
+            font-weight: normal;
         }
 
-        .python-script-tile {
+        .file-tile {
             background-color: #e9ecef;
             border: 1px solid #ced4da;
             border-radius: 4px;
@@ -87,34 +124,62 @@
             display: flex;
             align-items: center;
             font-size: 0.9rem;
-            cursor: pointer; /* Add cursor pointer */
+            cursor: pointer;
         }
 
-        .python-script-tile.selected { /* New style for selected tile */
-            border-color: var(--accent-color);
-            background-color: var(--drop-zone-hover);
-            box-shadow: 0 0 5px var(--accent-color);
+        .file-tile.selected {
+            border: 3px solid #2980b9 !important;
         }
 
-        .python-script-tile input[type="checkbox"] {
-            margin-right: 10px;
-            width: 16px;
-            height: 16px;
+        .file-tile.hollow {
+            background-color: #f8f9fa;
+            border: 2px dashed #adb5bd;
+            opacity: 0.7;
         }
 
-        .python-script-tile .details {
+        .file-tile.filled {
+            background-color: #d1e7dd;
+            border-color: #a3cfbb;
+        }
+
+        .file-tile.light-green {
+            background-color: #e8f5e8;
+            border-color: #c3e6c3;
+        }
+        
+        .file-tile.success {
+            background-color: #d1e7dd;
+            border-color: #a3cfbb;
+        }
+
+        .file-tile .details {
             flex-grow: 1;
         }
 
-        .python-script-tile .script-name {
+        .file-tile .file-name {
             font-weight: 500;
             display: block;
             margin-bottom: 4px;
         }
 
-        .python-script-tile .required-files {
+        .file-tile .file-info {
             font-size: 0.8rem;
             color: var(--secondary-text);
+        }
+
+        .drop-all-tile {
+            background-color: #fff3cd;
+            border: 2px dashed #ffc107;
+            border-radius: 4px;
+            padding: 15px;
+            margin-bottom: 8px;
+            text-align: center;
+            font-size: 0.9rem;
+            cursor: pointer;
+        }
+
+        .drop-all-tile:hover {
+            background-color: #ffecb5;
         }
 
         .sub-text {
@@ -122,23 +187,49 @@
             color: var(--secondary-text);
         }
 
-        .python-drop-zone { /* New class for Python drop zone */
-            grid-area: python-scripts;
+        .file-drop-zone {
+            grid-area: file-drop-zone;
+            max-height: 100%;
+            overflow: hidden;
         }
 
-        .data-files-drop-zone { /* Renamed from .files-drop */
-            grid-area: data-files;
+        .script-zone {
+            grid-area: script-zone;
+            max-height: 100%;
+            overflow: hidden;
         }
 
-        .preview-panel {
-            grid-area: preview; /* Updated grid area name */
+        .file-output-zone {
+            grid-area: file-output-zone;
+            max-height: 100%;
+            overflow: hidden;
+        }
+        
+        .output-panel {
             background-color: var(--panel-bg);
             border-radius: 8px;
             padding: 20px;
-            overflow: auto;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
             border: 2px solid #777777;
+            height: 100%;
+            max-height: 100%;
+            min-height: 0;
+        }
+
+        .preview-panel {
+            grid-area: preview;
+            background-color: var(--panel-bg);
+            border-radius: 8px;
+            padding: 20px;
+            overflow-y: auto;
+            display: block;
+            border: 2px solid #777777;
+            height: 100%;
+            max-height: 100%;
+            min-height: 0;
+            box-sizing: border-box;
         }
 
         .preview-panel .empty-state {
@@ -157,6 +248,8 @@
             overflow: hidden;
             display: flex;
             flex-direction: column;
+            height: 100%;
+            max-height: 100%;
         }
 
         .terminal-header {
@@ -200,15 +293,17 @@
         .file-list {
             list-style: none;
             width: 100%;
-            /* margin-top: 10px; */ /* Removed */
+            flex: 1;
+            overflow-y: auto;
+            min-height: 0;
         }
 
-        .python-files-list { /* New class for Python files list container */
+        .script-files-list {
             list-style: none;
             width: 100%;
-            /* margin-top: 10px; */ /* Removed */
-            max-height: calc(100% - 80px); /* Adjust based on button height etc. */
+            flex: 1;
             overflow-y: auto;
+            min-height: 0;
         }
 
         .file-table {
@@ -231,6 +326,7 @@
             display: flex;
             gap: 10px;
             margin-bottom: 15px;
+            flex-shrink: 0;
         }
         
         .btn {
@@ -353,9 +449,10 @@
 
         .file-preview {
             width: 100%;
-            height: 100%;
             overflow: auto;
             text-align: left;
+            max-height: calc(100% - 120px);
+            box-sizing: border-box;
         }
 
         .code-preview {
@@ -366,7 +463,9 @@
             background-color: #f5f5f5;
             border-radius: 4px;
             white-space: pre;
-            overflow-x: auto;
+            overflow: auto;
+            max-height: calc(100% - 120px);
+            box-sizing: border-box;
         }
 
         .run-button {
@@ -437,50 +536,69 @@
         @media (max-width: 768px) {
             .container {
                 grid-template-columns: 1fr;
-                grid-template-rows: auto auto 1fr;
+                grid-template-rows: auto auto auto auto auto;
                 grid-template-areas:
-                    "left-top"
-                    "left-middle"
-                    "right"
+                    "file-drop-zone"
+                    "script-zone"
+                    "file-output-zone"
+                    "preview"
                     "terminal";
                 height: auto;
+            }
+            
+            .left-column {
+                display: contents;
+            }
+            
+            .right-column {
+                display: contents;
             }
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <div class="drop-zone python-drop-zone" id="pythonDropZone">
-            <div class="action-buttons" id="pythonActionButtons" style="display: none;">
-                <button id="runAllPythonScriptsBtn" class="btn btn-run" disabled>Run</button>
-            </div>
-            <div id="pythonDropZoneInstructions">
-                <p>Drag and Drop Python Files (.py) Here</p>
-            </div>
-            <div id="pythonFilesList" class="python-files-list"></div>
-        </div>
-
-        <div class="drop-zone data-files-drop-zone" id="dataFilesDropZone">
-            <div id="dataFilesInstructions">
-                <p>Drag and Drop Data Files Here</p>
-                <p class="sub-text">(.csv, .parquet, .json, etc.)</p>
-            </div>
-            <div id="dataFilesList" class="file-list"></div>
-        </div>
-        
-        <div class="preview-panel" id="previewPanel">
-            <div class="empty-state">Select a File to Preview</div>
-        </div>
-        
-        <div class="terminal" id="terminal">
-            <div class="terminal-header">
-                <span>Terminal Output</span>
-                <div class="terminal-actions">
-                    <button id="copyTerminal">Copy</button>
-                    <button id="clearTerminal">Clear</button>
+        <div class="left-column">
+            <div class="drop-zone file-drop-zone" id="fileDropZone">
+                <div id="fileDropZoneInstructions" class="instructions">
+                    <p>Load scripts to see required files</p>
+                    <p class="sub-text">If using magic comments (# user_files:), otherwise click or drag/drop data files here</p>
                 </div>
+                <div id="fileDropZoneList" class="file-list"></div>
             </div>
-            <div class="terminal-content" id="terminalContent"></div>
+            
+            <div class="drop-zone script-zone" id="scriptZone">
+                <div id="scriptZoneInstructions" class="instructions">
+                    <p>Click or drag/drop python scripts here</p>
+                    <p class="sub-text">Use magic comments (# process_files:) to load other script output automatically</p>
+                </div>
+                <div id="scriptsList" class="script-files-list"></div>
+            </div>
+            
+            <div class="output-panel file-output-zone" id="fileOutputZone">
+                <div id="fileOutputInstructions" class="instructions">
+                    <p>Output Files</p>
+                    <p class="sub-text">Files generated by scripts appear here</p>
+                </div>
+                <div id="outputFilesList" class="file-list"></div>
+            </div>
+        </div>
+        
+        <div class="right-column">
+            <div class="preview-panel" id="previewPanel">
+                <div class="empty-state">Select a File to Preview</div>
+            </div>
+            
+            <div class="terminal" id="terminal">
+                <div class="terminal-header">
+                    <span>Terminal Output</span>
+                    <div class="terminal-actions">
+                        <button id="copyTerminal">Copy</button>
+                        <button id="clearTerminal">Clear</button>
+                    </div>
+                </div>
+                <div class="terminal-content" id="terminalContent"></div>
+            </div>
         </div>
     </div>
 
@@ -663,21 +781,22 @@
 
     <script>
         // Store files
-        const allFiles = []; // For data files
-        const pythonScripts = []; // For python scripts { name, content, requiredFiles, fileObject, id, selectedDataFileNames: Set }
+        const userFiles = []; // Files provided by user in file drop zone
+        const processFiles = []; // Files created by script processes (output files)
+        const pythonScripts = []; // For python scripts { name, content, userFiles: [], processFiles: [], fileObject, id }
         let selectedFile = null; // For preview
-        let activePythonScriptForDataSelection = null; // Tracks which Python script's requirements are shown
+        let activeScript = null; // Currently selected script
         
         // Map of active workers, keyed by script name
         const activeWorkers = {};
 
         // DOM Elements
-        const pythonDropZone = document.getElementById('pythonDropZone'); 
-        const pythonFilesList = document.getElementById('pythonFilesList'); 
-        const runAllPythonScriptsBtn = document.getElementById('runAllPythonScriptsBtn'); // Updated ID
-
-        const dataFilesDropZone = document.getElementById('dataFilesDropZone'); // Renamed
-        const dataFilesList = document.getElementById('dataFilesList'); // Renamed
+        const fileDropZone = document.getElementById('fileDropZone'); 
+        const fileDropZoneList = document.getElementById('fileDropZoneList');
+        const scriptZone = document.getElementById('scriptZone');
+        const scriptsList = document.getElementById('scriptsList');
+        const fileOutputZone = document.getElementById('fileOutputZone');
+        const outputFilesList = document.getElementById('outputFilesList');
         const previewPanel = document.getElementById('previewPanel');
         const terminalContent = document.getElementById('terminalContent');
         const clearTerminalBtn = document.getElementById('clearTerminal');
@@ -753,6 +872,23 @@
 
         // Run a Python script in a worker
         async function runPythonScript(scriptContent, context = {}, additionalFiles = []) {
+            // Check for common Python main block patterns
+            const mainPatterns = [
+                'if __name__ == "__main__":',
+                "if __name__ == '__main__':",
+                'if __name__ in ["__main__"]',
+                "if __name__ in ['__main__']",
+                '__name__ == "__main__"',
+                "__name__ == '__main__'"
+            ];
+            
+            const hasMainPattern = mainPatterns.some(pattern => scriptContent.includes(pattern));
+            if (hasMainPattern) {
+                log('Info: Script uses main block pattern. Automatically fixing for Pyodide compatibility.', 'info');
+                // Prepend __name__ fix to the script content
+                scriptContent = `__name__ = '__main__'\n${scriptContent}`;
+            }
+            
             // Create a new worker for each script
             const worker = createWorker();
             
@@ -779,6 +915,10 @@
                             log(`Python stderr from ${data.scriptName || 'script'}:\n${data.stderr}`, 'error');
                         }
                         
+                        // Terminate the worker to free memory
+                        worker.terminate();
+                        log(`Web worker terminated for ${data.scriptName || 'script'}`, 'info');
+                        
                         resolve(data);
                     } else if (data.status === "error") {
                         // Script execution failed
@@ -788,6 +928,10 @@
                         if (data.stderr && data.stderr.trim()) {
                             log(`Python stderr from ${data.scriptName || 'script'}:\n${data.stderr}`, 'error');
                         }
+                        
+                        // Terminate the worker to free memory even on error
+                        worker.terminate();
+                        log(`Web worker terminated for ${data.scriptName || 'script'}`, 'info');
                         
                         resolve(data);
                     } else {
@@ -819,25 +963,172 @@
             return promise;
         }
 
-        // Helper function to update a script's selected files with newly available required files
-        function updateScriptSelectionsWithAvailableRequiredFiles(script) {
-            if (!script || !script.requiredFiles || !script.selectedDataFileNames) return;
-        
-            script.requiredFiles.forEach(reqFileName => {
-                const dataFileExists = allFiles.some(dataFile => dataFile.name === reqFileName);
-                if (dataFileExists && !script.selectedDataFileNames.has(reqFileName)) {
-                    script.selectedDataFileNames.add(reqFileName);
-                    log(`Auto-included newly available required file '${reqFileName}' for script '${script.name}'.`, 'info');
+        // Update the file drop zone with required files and drop all tile
+        function updateFileDropZone() {
+            const instructions = document.getElementById('fileDropZoneInstructions');
+            fileDropZoneList.innerHTML = '';
+            
+            if (pythonScripts.length === 0) {
+                if (userFiles.length === 0) {
+                    instructions.style.display = 'block';
+                    instructions.innerHTML = '<p>Load scripts to see required files</p>';
+                } else {
+                    instructions.style.display = 'none';
+                    // Show user files even without scripts
+                    userFiles.forEach(file => {
+                        const tile = document.createElement('div');
+                        tile.className = 'file-tile light-green';
+                        tile.dataset.fileName = file.name;
+                        tile.innerHTML = `
+                            <div class="details">
+                                <span class="file-name">${file.name}</span>
+                                <span class="file-info">User file - ${(file.size / 1024).toFixed(1)} KB</span>
+                            </div>
+                        `;
+                        tile.addEventListener('click', () => {
+                            clearAllSelections();
+                            tile.classList.add('selected');
+                            previewFile(file);
+                        });
+                        fileDropZoneList.appendChild(tile);
+                    });
+                }
+                return;
+            }
+            
+            instructions.style.display = 'none';
+            fileDropZoneList.innerHTML = '';
+            
+            // Collect all unique user file requirements from all scripts
+            const allRequiredUserFiles = new Set();
+            pythonScripts.forEach(script => {
+                script.userFiles.forEach(fileName => allRequiredUserFiles.add(fileName));
+            });
+            
+            // Add Drop All tile
+            const dropAllTile = document.createElement('div');
+            dropAllTile.className = 'drop-all-tile';
+            dropAllTile.innerHTML = '<strong>Drop All</strong><br><span style="font-size: 0.8rem;">Drop multiple files here for auto-matching</span>';
+            
+            // Add click handler
+            dropAllTile.addEventListener('click', () => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.multiple = true;
+                input.onchange = (e) => {
+                    if (e.target.files.length > 0) {
+                        handleDropAllFiles(Array.from(e.target.files));
+                    }
+                };
+                input.click();
+            });
+            
+            // Add drag and drop handlers specifically for Drop All
+            dropAllTile.addEventListener('dragover', (e) => {
+                e.preventDefault();
+                dropAllTile.style.backgroundColor = '#ffecb5';
+            });
+            
+            dropAllTile.addEventListener('dragleave', () => {
+                dropAllTile.style.backgroundColor = '#fff3cd';
+            });
+            
+            dropAllTile.addEventListener('drop', (e) => {
+                e.preventDefault();
+                e.stopPropagation(); // Prevent parent drop zone from handling
+                dropAllTile.style.backgroundColor = '#fff3cd';
+                handleDropAllFiles(Array.from(e.dataTransfer.files));
+            });
+            
+            fileDropZoneList.appendChild(dropAllTile);
+            
+            // Add tiles for each required user file
+            allRequiredUserFiles.forEach(fileName => {
+                const tile = document.createElement('div');
+                const userFile = userFiles.find(f => f.name === fileName);
+                const isHollow = !userFile;
+                
+                tile.className = `file-tile ${isHollow ? 'hollow' : 'filled'}`;
+                tile.innerHTML = `
+                    <div class="details">
+                        <span class="file-name">${fileName}</span>
+                        <span class="file-info">${isHollow ? 'Required - click to select or drag file here' : 'Loaded - ' + (userFile.size / 1024).toFixed(1) + ' KB'}</span>
+                    </div>
+                `;
+                
+                if (isHollow) {
+                    tile.addEventListener('click', () => {
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.onchange = (e) => {
+                            if (e.target.files[0]) {
+                                handleSpecificFileSelection(e.target.files[0], fileName);
+                            }
+                        };
+                        input.click();
+                    });
+                    
+                    // Add drag and drop for hollow tiles
+                    tile.addEventListener('dragover', (e) => {
+                        e.preventDefault();
+                        tile.style.opacity = '1';
+                        tile.style.backgroundColor = 'var(--drop-zone-hover)';
+                    });
+                    
+                    tile.addEventListener('dragleave', () => {
+                        tile.style.opacity = '0.7';
+                        tile.style.backgroundColor = '#f8f9fa';
+                    });
+                    
+                    tile.addEventListener('drop', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        tile.style.opacity = '0.7';
+                        tile.style.backgroundColor = '#f8f9fa';
+                        if (e.dataTransfer.files[0]) {
+                            handleSpecificFileSelection(e.dataTransfer.files[0], fileName);
+                        }
+                    });
+                } else {
+                    tile.addEventListener('click', () => {
+                        clearAllSelections();
+                        tile.classList.add('selected');
+                        previewFile(userFile);
+                    });
+                }
+                
+                fileDropZoneList.appendChild(tile);
+            });
+            
+            // Add any non-matched files with light green background
+            userFiles.forEach(file => {
+                if (!allRequiredUserFiles.has(file.name)) {
+                    const tile = document.createElement('div');
+                    tile.className = 'file-tile light-green';
+                    tile.dataset.fileName = file.name;
+                    tile.innerHTML = `
+                        <div class="details">
+                            <span class="file-name">${file.name}</span>
+                            <span class="file-info">Non-matched file - ${(file.size / 1024).toFixed(1)} KB</span>
+                        </div>
+                    `;
+                    tile.addEventListener('click', () => {
+                        clearAllSelections();
+                        tile.classList.add('selected');
+                        previewFile(file);
+                    });
+                    fileDropZoneList.appendChild(tile);
                 }
             });
         }
 
         // Handle file selection - modified to distinguish drop zones
         function handleFileSelect(files, dropZoneId) {
-            if (dropZoneId === 'pythonDropZone') {
+            if (dropZoneId === 'scriptZone') {
                 addPythonScripts(Array.from(files));
-            } else if (dropZoneId === 'dataFilesDropZone') {
-                addDataFiles(Array.from(files));
+            } else if (dropZoneId === 'fileDropZone') {
+                // Files dropped in the file drop zone - these are user files
+                addUserFiles(Array.from(files));
             }
         }
 
@@ -846,9 +1137,9 @@
             const pyFiles = files.filter(file => file.name.toLowerCase().endsWith('.py'));
             if (pyFiles.length === 0) return;
 
-            const pythonDropZoneInstructions = document.getElementById('pythonDropZoneInstructions');
-            if (pythonDropZoneInstructions) {
-                pythonDropZoneInstructions.style.display = 'none';
+            const scriptZoneInstructions = document.getElementById('scriptZoneInstructions');
+            if (scriptZoneInstructions) {
+                scriptZoneInstructions.style.display = 'none';
             }
 
             for (const file of pyFiles) {
@@ -859,19 +1150,13 @@
                         const newScript = {
                             name: file.name,
                             content: content,
-                            requiredFiles: requiredFiles,
+                            userFiles: requiredFiles.userFiles || [],
+                            processFiles: requiredFiles.processFiles || [],
                             fileObject: file,
-                            id: `py-${file.name.replace(/[^a-zA-Z0-9]/g, '-')}`,
-                            selectedDataFileNames: new Set() // Initialize selectedDataFileNames
+                            id: `py-${file.name.replace(/[^a-zA-Z0-9]/g, '-')}`
                         };
-                        // Auto-select required files if they exist in allFiles
-                        requiredFiles.forEach(reqFileName => {
-                            if (allFiles.some(dataFile => dataFile.name === reqFileName)) {
-                                newScript.selectedDataFileNames.add(reqFileName);
-                            }
-                        });
                         pythonScripts.push(newScript);
-                        log(`Added Python script: ${file.name} (Requires: ${requiredFiles.join(', ') || 'none'})`);
+                        log(`Added Python script: ${file.name} (User files: ${newScript.userFiles.join(', ') || 'none'}, Process files: ${newScript.processFiles.join(', ') || 'none'})`);
                     } catch (e) {
                         log(`Error reading Python file ${file.name}: ${e.message}`, 'error');
                     }
@@ -880,536 +1165,423 @@
                 }
             }
             pythonScripts.sort((a, b) => a.name.localeCompare(b.name));
-            updatePythonFilesList();
+            updateScriptsList();
+            updateFileDropZone();
             updateRunButtonState();
         }
 
-        // Parse # Required-Files: comment
+        // Parse magic comments for user_files and process_files
         function parseRequiredFiles(scriptContent) {
-            const regex = /#\s*Required-Files:\s*(.*)/i;
-            const match = scriptContent.match(regex);
-            if (match && match[1]) {
-                return match[1].split(',').map(f => f.trim()).filter(f => f.length > 0);
-            }
-            return [];
+            const userFilesRegex = /#\s*user_files:\s*(.*)/i;
+            const processFilesRegex = /#\s*process_files:\s*(.*)/i;
+            
+            const userFilesMatch = scriptContent.match(userFilesRegex);
+            const processFilesMatch = scriptContent.match(processFilesRegex);
+            
+            const userFiles = userFilesMatch && userFilesMatch[1] 
+                ? userFilesMatch[1].split(',').map(f => f.trim()).filter(f => f.length > 0)
+                : [];
+                
+            const processFiles = processFilesMatch && processFilesMatch[1]
+                ? processFilesMatch[1].split(',').map(f => f.trim()).filter(f => f.length > 0)
+                : [];
+                
+            return { userFiles, processFiles };
         }
         
-        // Add data files (modified from old handleFileSelect)
-        function addDataFiles(files) {
+        // Add user files (files dropped in the file drop zone)
+        function addUserFiles(files) {
             files.forEach(file => {
-                if (!allFiles.some(f => f.name === file.name)) {
-                    const fileObj = file;
-                    fileObj.isPython = file.name.toLowerCase().endsWith('.py'); // Though data zone shouldn't get .py
-                    allFiles.push(fileObj);
-                    log(`Added data file: ${file.name}`);
-
-                    // If a newly added data file is required by any Python script and not yet in its selections, add it.
-                    // This makes auto-selection more dynamic.
-                    pythonScripts.forEach(pScript => {
-                        if (pScript.requiredFiles.includes(fileObj.name) && !pScript.selectedDataFileNames.has(fileObj.name)) {
-                            // Check if this script is the active one, to potentially refresh UI if needed,
-                            // but adding to selectedDataFileNames is the main part.
-                            // This behavior means if a user explicitly unselected a required file,
-                            // and then the file is re-added (e.g. deleted and re-dropped), it gets re-selected.
-                            // This might be desired as "required" implies it should be there.
-                            pScript.selectedDataFileNames.add(fileObj.name);
-                        }
-                    });
-
+                if (!userFiles.some(f => f.name === file.name)) {
+                    userFiles.push(file);
+                    log(`Added user file: ${file.name}`);
                 } else {
-                    log(`Data file ${file.name} already exists`, 'warning');
+                    log(`User file ${file.name} already exists`, 'warning');
                 }
             });
-            updateDataFileList(); // This will rebuild the list and attach new checkbox listeners
-            // If an active Python script dictates selections, re-apply them to reflect any newly added files that match requirements
-            updateDataFileSelections(activePythonScriptForDataSelection);
+            updateFileDropZone();
+            updateOutputFilesList();
+        }
+        
+        // Add process files (files created by script execution)
+        function addProcessFiles(files) {
+            files.forEach(file => {
+                if (!processFiles.some(f => f.name === file.name)) {
+                    processFiles.push(file);
+                    log(`Added process file: ${file.name}`);
+                } else {
+                    // Replace existing process file
+                    const index = processFiles.findIndex(f => f.name === file.name);
+                    processFiles[index] = file;
+                    log(`Updated process file: ${file.name}`);
+                }
+            });
+            updateOutputFilesList();
         }
 
 
-        // Update Python file list display
-        function updatePythonFilesList() {
-            pythonFilesList.innerHTML = ''; // Clear existing tiles
+        // Handle Drop All files functionality
+        function handleDropAllFiles(files) {
+            const filesToAdd = [];
+            
+            files.forEach(file => {
+                // Check if this file matches any required user file
+                const allRequiredUserFiles = new Set();
+                pythonScripts.forEach(script => {
+                    script.userFiles.forEach(fileName => allRequiredUserFiles.add(fileName));
+                });
+                
+                if (!userFiles.some(f => f.name === file.name)) {
+                    filesToAdd.push(file);
+                    if (allRequiredUserFiles.has(file.name)) {
+                        log(`Auto-matched file: ${file.name}`);
+                    } else {
+                        log(`Added non-matched file: ${file.name}`);
+                    }
+                }
+            });
+            
+            // Add all files at once
+            filesToAdd.forEach(file => userFiles.push(file));
+            updateFileDropZone();
+        }
+        
+        // Handle specific file selection for a required file tile
+        function handleSpecificFileSelection(file, expectedFileName) {
+            if (file.name === expectedFileName) {
+                // Exact match
+                if (!userFiles.some(f => f.name === file.name)) {
+                    userFiles.push(file);
+                    log(`Added required file: ${file.name}`);
+                    updateFileDropZone();
+                }
+            } else {
+                // Name mismatch - ask user if they want to rename
+                if (confirm(`File name "${file.name}" doesn't match expected "${expectedFileName}". Rename the file to match?`)) {
+                    // Create a new file with the expected name
+                    const renamedFile = new File([file], expectedFileName, { type: file.type, lastModified: file.lastModified });
+                    if (!userFiles.some(f => f.name === expectedFileName)) {
+                        userFiles.push(renamedFile);
+                        log(`Added and renamed file: ${file.name} -> ${expectedFileName}`);
+                        updateFileDropZone();
+                    }
+                } else {
+                    log(`File selection cancelled for ${expectedFileName}`);
+                }
+            }
+        }
+        
+        // Update scripts list display
+        function updateScriptsList() {
+            scriptsList.innerHTML = ''; // Clear existing tiles
+
+            // Add Run All button if there are scripts
+            if (pythonScripts.length > 0) {
+                const runAllButton = document.createElement('button');
+                runAllButton.className = 'btn btn-run';
+                runAllButton.textContent = 'Run All';
+                runAllButton.style.marginBottom = '15px';
+                runAllButton.id = 'runAllScriptsBtn';
+                runAllButton.addEventListener('click', () => {
+                    executeAllScripts();
+                });
+                scriptsList.appendChild(runAllButton);
+            }
 
             pythonScripts.forEach(script => {
                 const tile = document.createElement('div');
-                tile.className = 'python-script-tile';
-                tile.dataset.scriptName = script.name; // Store script name for identification
+                tile.className = 'file-tile';
+                tile.dataset.scriptName = script.name;
+                
+                const userFilesText = script.userFiles.length > 0 ? script.userFiles.join(', ') : 'None';
+                const processFilesText = script.processFiles.length > 0 ? script.processFiles.join(', ') : 'None';
+                
                 tile.innerHTML = `
                     <div class="details">
-                        <span class="script-name">${script.name}</span>
-                        <span class="required-files">Requires: ${script.requiredFiles.join(', ') || 'None'}</span>
+                        <span class="file-name">${script.name}</span>
+                        <span class="file-info">User files: ${userFilesText}<br>Process files: ${processFilesText}</span>
                     </div>
                 `;
                 tile.addEventListener('click', () => {
-                    const clickedScriptName = script.name;
-                    let newActiveScript = null;
-
-                    if (activePythonScriptForDataSelection && activePythonScriptForDataSelection.name === clickedScriptName) {
-                        // Clicked the currently active script tile: deselect it.
-                        activePythonScriptForDataSelection = null;
+                    // Clear all selections first
+                    clearAllSelections();
+                    
+                    // Toggle script selection
+                    if (activeScript && activeScript.name === script.name) {
+                        activeScript = null;
                     } else {
-                        // Clicked a new script tile or a script tile when none was active.
-                        newActiveScript = pythonScripts.find(s => s.name === clickedScriptName);
-                        activePythonScriptForDataSelection = newActiveScript;
+                        activeScript = script;
+                        tile.classList.add('selected');
                     }
-                    updatePythonTileVisualState(); // Highlights the correct tile
-                    updateDataFileSelections(activePythonScriptForDataSelection); // Updates checkboxes based on the new active script's stored selections, or clears them if null
-                    updateRunButtonState(); // Add this call to update button text/state on selection change
+                    updateRunButtonState();
                     
                     // Preview the clicked Python script file
                     if (script.fileObject) {
                         previewFile(script.fileObject);
                     }
                 });
-                pythonFilesList.appendChild(tile);
+                scriptsList.appendChild(tile);
             });
             updateRunButtonState();
-            updatePythonTileVisualState(); // Ensure visual state is correct after list update
         }
         
-        function updatePythonTileVisualState() {
-            const tiles = pythonFilesList.querySelectorAll('.python-script-tile');
-            tiles.forEach(tile => {
-                if (activePythonScriptForDataSelection && tile.dataset.scriptName === activePythonScriptForDataSelection.name) {
+        
+        // Update output files list display
+        function updateOutputFilesList() {
+            const instructions = document.getElementById('fileOutputInstructions');
+            
+            if (processFiles.length === 0) {
+                instructions.style.display = 'block';
+                instructions.innerHTML = '<p>Output Files</p><p class="sub-text">Waiting for output</p>';
+                outputFilesList.innerHTML = '';
+                return;
+            }
+            
+            instructions.style.display = 'none';
+            outputFilesList.innerHTML = '';
+            
+            // Add Download All button
+            const downloadAllButton = document.createElement('button');
+            downloadAllButton.className = 'btn btn-download';
+            downloadAllButton.textContent = 'Download All';
+            downloadAllButton.style.marginBottom = '15px';
+            downloadAllButton.addEventListener('click', () => {
+                downloadFiles(processFiles);
+            });
+            outputFilesList.appendChild(downloadAllButton);
+            
+            processFiles.forEach(file => {
+                const tile = document.createElement('div');
+                tile.className = 'file-tile filled';
+                tile.dataset.fileName = file.name; // Add data attribute for selection tracking
+                tile.innerHTML = `
+                    <div class="details">
+                        <span class="file-name">${file.name}</span>
+                        <span class="file-info">Output file - ${(file.size / 1024).toFixed(1)} KB</span>
+                    </div>
+                `;
+                tile.addEventListener('click', () => {
+                    clearAllSelections();
                     tile.classList.add('selected');
-                } else {
-                    tile.classList.remove('selected');
-                }
+                    previewFile(file);
+                });
+                outputFilesList.appendChild(tile);
             });
         }
         
-        function updateDataFileSelections(pythonScript) { // pythonScript is the activePythonScriptForDataSelection or null
-            const checkboxes = dataFilesList.querySelectorAll('.file-checkbox');
-            
-            if (pythonScript) {
-                checkboxes.forEach(cb => {
-                    const filename = cb.dataset.filename;
-                    cb.checked = pythonScript.selectedDataFileNames.has(filename);
-                });
-            } else {
-                // No python script active, general selection mode. Clear checkboxes.
-                checkboxes.forEach(cb => cb.checked = false);
+        // Download files function
+        function downloadFiles(files) {
+            if (files.length === 1) {
+                // Single file download
+                const file = files[0];
+                const downloadUrl = URL.createObjectURL(file);
+                const a = document.createElement('a');
+                a.href = downloadUrl;
+                a.download = file.name;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(downloadUrl);
+                log(`Downloaded file: ${file.name}`, 'success');
+            } else if (files.length > 1) {
+                // Multiple files - create a zip file
+                log('Preparing to download multiple files as zip...', 'info');
+                
+                // Create script element for JSZip
+                const script = document.createElement('script');
+                script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+                script.onload = async () => {
+                    try {
+                        const zip = new JSZip();
+                        
+                        files.forEach(file => {
+                            zip.file(file.name, file);
+                        });
+                        
+                        const zipContent = await zip.generateAsync({ type: 'blob' });
+                        
+                        const downloadUrl = URL.createObjectURL(zipContent);
+                        const a = document.createElement('a');
+                        a.href = downloadUrl;
+                        a.download = 'output-files.zip';
+                        document.body.appendChild(a);
+                        a.click();
+                        document.body.removeChild(a);
+                        URL.revokeObjectURL(downloadUrl);
+                        
+                        log(`Downloaded ${files.length} files as zip`, 'success');
+                    } catch (error) {
+                        log(`Error creating zip file: ${error.message}`, 'error');
+                    }
+                };
+                
+                script.onerror = () => {
+                    log('Failed to load JSZip library. Check your internet connection.', 'error');
+                };
+                
+                document.head.appendChild(script);
             }
-            updateDataFilesActionAreaUI(pythonScript); 
         }
         
+        // Update run button state (simplified since button is now in script list)
         function updateRunButtonState() {
-            const pythonActionButtons = document.getElementById('pythonActionButtons');
-            if (pythonScripts.length > 0) {
-                pythonActionButtons.style.display = 'flex';
-                runAllPythonScriptsBtn.disabled = false;
-                if (activePythonScriptForDataSelection) {
-                    runAllPythonScriptsBtn.textContent = 'Run';
+            // Button state is now handled automatically in updateScriptsList()
+            // This function is kept for compatibility but does nothing
+        }
+        
+        // Get files needed for script execution
+        function getFilesForScript(script) {
+            const filesToInclude = [];
+            
+            // Add required user files
+            script.userFiles.forEach(fileName => {
+                const userFile = userFiles.find(f => f.name === fileName);
+                if (userFile) {
+                    filesToInclude.push(userFile);
                 } else {
-                    runAllPythonScriptsBtn.textContent = 'Run All';
+                    log(`Warning: Required user file '${fileName}' not found for script '${script.name}'`, 'warning');
                 }
-            } else {
-                pythonActionButtons.style.display = 'none';
-                runAllPythonScriptsBtn.disabled = true;
-                runAllPythonScriptsBtn.textContent = 'Run'; // Reset to default or 'Run All'
-            }
+            });
+            
+            // Add required process files
+            script.processFiles.forEach(fileName => {
+                const processFile = processFiles.find(f => f.name === fileName);
+                if (processFile) {
+                    filesToInclude.push(processFile);
+                } else {
+                    log(`Warning: Required process file '${fileName}' not found for script '${script.name}'`, 'warning');
+                }
+            });
+            
+            // Add all non-matched user files (light green)
+            const allRequiredUserFiles = new Set();
+            pythonScripts.forEach(s => {
+                s.userFiles.forEach(fileName => allRequiredUserFiles.add(fileName));
+            });
+            
+            userFiles.forEach(file => {
+                if (!allRequiredUserFiles.has(file.name) && !filesToInclude.includes(file)) {
+                    filesToInclude.push(file);
+                }
+            });
+            
+            return filesToInclude;
         }
 
-        runAllPythonScriptsBtn.addEventListener('click', async () => {
+        // Function to execute all scripts (called by the dynamic Run All button)
+        async function executeAllScripts() {
             if (pythonScripts.length === 0) {
                 log("No Python scripts to run.", "warning");
                 return;
             }
 
-            if (activePythonScriptForDataSelection) {
-                // Run only the selected script
-                const script = activePythonScriptForDataSelection;
-                log(`Preparing to execute selected script: ${script.name}...`);
+            // Always run all scripts (simplified from the old button logic)
+            log(`Preparing to execute all ${pythonScripts.length} Python script(s)...`);
+            
+            for (const script of pythonScripts) {
+                const filesForThisScript = getFilesForScript(script);
                 
-                // Recheck and include newly available required files
-                updateScriptSelectionsWithAvailableRequiredFiles(script);
-
-                const filesForThisScript = allFiles.filter(dataFile =>
-                    script.selectedDataFileNames.has(dataFile.name)
-                );
-
-                if (filesForThisScript.length === 0) {
-                    log(`Script ${script.name} will run without any additional data files (none selected for it).`, "info");
-                } else {
-                    log(`Script ${script.name} will run with data files: ${filesForThisScript.map(f => f.name).join(', ')}`, "info");
-                }
+                log(`Script ${script.name} will run with files: ${filesForThisScript.map(f => f.name).join(', ') || 'none'}`, "info");
                 
                 log(`Running script: ${script.name}`);
                 await executePythonFileInternal(script.fileObject, script.content, filesForThisScript);
-                log(`Finished running script: ${script.name}.`, "success");
-
-            } else {
-                // Run all scripts
-                log(`Preparing to execute all ${pythonScripts.length} Python script(s)...`);
-                
-                for (const script of pythonScripts) {
-                    // Recheck and include newly available required files
-                    updateScriptSelectionsWithAvailableRequiredFiles(script);
-
-                    const filesForThisScript = allFiles.filter(dataFile =>
-                        script.selectedDataFileNames.has(dataFile.name)
-                    );
-
-                    if (filesForThisScript.length === 0) {
-                        log(`Script ${script.name} will run without any additional data files (none selected for it).`, "info");
-                    } else {
-                        log(`Script ${script.name} will run with data files: ${filesForThisScript.map(f => f.name).join(', ')}`, "info");
-                    }
-                    
-                    log(`Running script: ${script.name}`);
-                    await executePythonFileInternal(script.fileObject, script.content, filesForThisScript);
-                }
-                log("Finished running all Python scripts.", "success");
             }
-        });
-
-        // Function to update action buttons state based on selections (for data files)
-        function updateDataFileActionButtonsState() {
-            const downloadButton = document.getElementById('downloadSelectedDataFiles');
-            const checkedBoxes = dataFilesList.querySelectorAll('.file-checkbox:checked'); 
-            const hasSelection = checkedBoxes.length > 0;
-            
-            if (downloadButton) downloadButton.disabled = !hasSelection;
+            log("Finished running all Python scripts.", "success");
         }
 
-        // Update file list display (now for data files)
-        function updateDataFileList() {
-            const instructionsElement = document.getElementById('dataFilesInstructions');
+        // Update the preview panel to show file properties at the top
+        function updatePreviewWithFileInfo(file) {
+            // Create file info section
+            const fileInfo = document.createElement('div');
+            fileInfo.style.padding = '0 0 15px 0';
+            fileInfo.style.borderBottom = '1px solid #eee';
+            fileInfo.style.marginBottom = '15px';
+            fileInfo.style.fontSize = '0.9rem';
             
-            if (allFiles.length > 0) {
-                instructionsElement.style.display = 'none';
-            } else {
-                instructionsElement.style.display = 'block'; // Changed from 'flex'
-            }
+            const sizeString = file.size < 1024 
+                ? file.size + ' B'
+                : file.size < 1024 * 1024
+                    ? (file.size / 1024).toFixed(1) + ' KB'
+                    : (file.size / (1024 * 1024)).toFixed(1) + ' MB';
+                    
+            const date = new Date(file.lastModified);
+            const dateString = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
             
-            dataFilesList.innerHTML = ''; // Changed from filesList
+            fileInfo.innerHTML = `
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <strong>${file.name}</strong>
+                    <div>
+                        <span style="color: var(--secondary-text); margin-right: 10px;">Size: ${sizeString}</span>
+                        <button class="btn btn-download preview-download-btn" style="padding: 4px 8px; font-size: 0.8rem;">Download</button>
+                    </div>
+                </div>
+                <div style="color: var(--secondary-text); font-size: 0.8rem;">
+                    Last Modified: ${dateString}
+                </div>
+            `;
             
-            if (allFiles.length > 0) {
-                const actionContainer = document.createElement('div');
-                actionContainer.id = 'dataFilesActionContainer';
-                actionContainer.style.display = 'flex';
-                actionContainer.style.gap = '10px';
-                actionContainer.style.marginBottom = '15px';
-                actionContainer.style.alignItems = 'center'; // Vertically align items
-
-                // Create Download Button
-                const downloadButton = document.createElement('button');
-                downloadButton.id = 'downloadSelectedDataFiles';
-                downloadButton.className = 'btn btn-download';
-                downloadButton.textContent = 'Download';
-                downloadButton.disabled = true;
-                actionContainer.appendChild(downloadButton);
-
-                // Create Message Text
-                const messageText = document.createElement('p');
-                messageText.id = 'dataFilesMessageText';
-                messageText.textContent = 'Files included with selected script';
-                messageText.style.display = 'none'; // Initially hidden
-                messageText.style.flexGrow = '1'; 
-                messageText.style.textAlign = 'center';
-                messageText.style.padding = '6px 0'; 
-                messageText.style.fontSize = '0.9rem';
-                messageText.style.color = 'var(--secondary-text)';
-                actionContainer.appendChild(messageText);
-                
-                dataFilesList.appendChild(actionContainer);
-            }
-            
-            if (allFiles.length > 0) {
-                // Create table
-                const table = document.createElement('table');
-                table.className = 'file-table';
-                
-                // Create table header with sortable columns
-                const thead = document.createElement('thead');
-                thead.innerHTML = `
-                    <tr>
-                        <th><input type="checkbox" id="selectAllFiles"></th>
-                        <th class="sortable sort-active sort-asc" data-sort="name">Name</th>
-                        <th class="sortable" data-sort="size">Size</th>
-                        <th class="sortable" data-sort="date">Last Modified</th>
-                    </tr>
-                `;
-                table.appendChild(thead);
-                
-                // Create table body
-                const tbody = document.createElement('tbody');
-                allFiles.forEach(file => {
-                    const tr = document.createElement('tr');
-                    tr.className = 'file-row';
-                    
-                    // Format date
-                    const date = new Date(file.lastModified);
-                    const dateString = date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
-                    
-                    // Calculate size
-                    const sizeString = file.size < 1024 
-                        ? file.size + ' B'
-                        : file.size < 1024 * 1024
-                            ? (file.size / 1024).toFixed(1) + ' KB'
-                            : (file.size / (1024 * 1024)).toFixed(1) + ' MB';
-                    
-                    // Store size value for sorting
-                    const sizeBytes = file.size;
-                    
-                    // Store date for sorting
-                    const dateValue = file.lastModified;
-                    
-                    tr.innerHTML = `
-                        <td><input type="checkbox" class="file-checkbox" data-filename="${file.name}"></td>
-                        <td data-value="${file.name}"><span class="file-icon">📄</span>${file.name}</td>
-                        <td data-value="${sizeBytes}">${sizeString}</td>
-                        <td data-value="${dateValue}">${dateString}</td>
-                    `;
-
-                    // Apply highlight if file was just created by Pyodide
-                    if (file.wasJustCreatedByPyodide) {
-                        tr.classList.add('new-file-indicator');
-                    }
-                    
-                    // Add data attributes for sorting
-                    tr.dataset.name = file.name.toLowerCase();
-                    tr.dataset.size = String(file.size);
-                    tr.dataset.date = String(file.lastModified);
-                    
-                    // Add click handler for row
-                    tr.addEventListener('click', (e) => {
-                        // Don't trigger row selection when checkbox or button is clicked
-                        if (e.target.type !== 'checkbox' && e.target.tagName !== 'BUTTON') {
-                            selectFile(file);
-                        }
-                    });
-
-                    // Add change listener for the checkbox
-                    const checkbox = tr.querySelector('.file-checkbox');
-                    checkbox.addEventListener('change', (event) => {
-                        const filename = event.target.dataset.filename;
-                        const isChecked = event.target.checked;
-
-                        if (activePythonScriptForDataSelection) {
-                            if (isChecked) {
-                                activePythonScriptForDataSelection.selectedDataFileNames.add(filename);
-                            } else {
-                                activePythonScriptForDataSelection.selectedDataFileNames.delete(filename);
-                            }
-                            // No need to call updateDataFileSelections, UI is already updated.
-                            // Download/Delete buttons are hidden, so their state update is not critical here.
-                        } else {
-                            // General selection mode (no Python script active)
-                            updateDataFileActionButtonsState(); // Update Download/Delete button states
-                        }
-                    });
-                    
-                    tbody.appendChild(tr);
-                });
-                
-                table.appendChild(tbody);
-                dataFilesList.appendChild(table); // Changed from filesList
-                
-                // Add select all functionality
-                const selectAllCheckbox = document.getElementById('selectAllFiles');
-                selectAllCheckbox.addEventListener('change', () => {
-                    const checkboxes = dataFilesList.querySelectorAll('.file-checkbox'); // Changed from filesList
-                    checkboxes.forEach(checkbox => {
-                        checkbox.checked = selectAllCheckbox.checked;
-                    });
-                    updateDataFileActionButtonsState(); // Renamed function
-                });
-                
-                // Add sorting functionality to the table headers
-                const sortableHeaders = thead.querySelectorAll('.sortable');
-                sortableHeaders.forEach(header => {
-                    header.addEventListener('click', () => {
-                        const sortBy = header.dataset.sort;
-                        const isAsc = header.classList.contains('sort-asc');
-                        
-                        // Reset all headers
-                        sortableHeaders.forEach(h => {
-                            h.classList.remove('sort-active', 'sort-asc', 'sort-desc');
-                        });
-                        
-                        // Set active sort
-                        header.classList.add('sort-active');
-                        if (isAsc) {
-                            header.classList.add('sort-desc');
-                        } else {
-                            header.classList.add('sort-asc');
-                        }
-                        
-                        // Get all rows and convert to array for sorting
-                        const rows = Array.from(tbody.querySelectorAll('tr'));
-                        
-                        // Sort the rows based on the selected column
-                        rows.sort((a, b) => {
-                            let aValue = a.dataset[sortBy];
-                            let bValue = b.dataset[sortBy];
-                            
-                            // Special handling for size and date, which are numbers
-                            if (sortBy === 'size' || sortBy === 'date') {
-                                aValue = Number(aValue);
-                                bValue = Number(bValue);
-                            }
-                            
-                            if (aValue < bValue) return isAsc ? -1 : 1;
-                            if (aValue > bValue) return isAsc ? 1 : -1;
-                            return 0;
-                        });
-                        
-                        // Clear and re-append sorted rows
-                        tbody.innerHTML = '';
-                        rows.forEach(row => tbody.appendChild(row));
-                    });
-                });
-                
-                // Add event listeners to all checkboxes to update action buttons state
-                const checkboxes = dataFilesList.querySelectorAll('.file-checkbox'); // Changed from filesList
-                checkboxes.forEach(checkbox => {
-                    checkbox.addEventListener('change', updateDataFileActionButtonsState); // Renamed function
-                });
-                
-                // No more individual run buttons in the table rows
-                
-                // REMOVE runSelectedFiles and includeInRunFiles button logic from here
-                // as it's handled by the Python zone now.
-                
-                // Add download selected files functionality
-                const downloadButton = document.getElementById('downloadSelectedDataFiles');
-                if (downloadButton) { // Check if button exists
-                    downloadButton.addEventListener('click', () => {
-                        const selectedCheckboxes = dataFilesList.querySelectorAll('.file-checkbox:checked'); // Changed
-                        if (selectedCheckboxes.length === 0) return;
-                        
-                        // Get selected files
-                        const filesForDownload = [];
-                        selectedCheckboxes.forEach(checkbox => {
-                            const filename = checkbox.dataset.filename;
-                            const file = allFiles.find(f => f.name === filename);
-                            if (file) {
-                                filesForDownload.push(file);
-                            }
-                        });
-                        
-                        // Handle downloads based on count
-                        if (filesForDownload.length === 1) {
-                            // Single file download
-                            const file = filesForDownload[0];
-                            const downloadUrl = URL.createObjectURL(file);
-                            const a = document.createElement('a');
-                            a.href = downloadUrl;
-                            a.download = file.name;
-                            document.body.appendChild(a);
-                            a.click();
-                            document.body.removeChild(a);
-                            URL.revokeObjectURL(downloadUrl);
-                            log(`Downloaded file: ${file.name}`, 'success');
-                        } else if (filesForDownload.length > 1) {
-                            // Multiple files - create a zip file
-                            // First, dynamically load JSZip via script tag
-                            log('Preparing to download multiple files as zip...', 'info');
-                            
-                            // Create script element for JSZip
-                            const script = document.createElement('script');
-                            script.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
-                            script.onload = async () => {
-                                try {
-                                    // JSZip is now available as a global variable
-                                    const zip = new JSZip();
-                                    
-                                    // Add each file to the zip
-                                    filesForDownload.forEach(file => {
-                                        zip.file(file.name, file);
-                                    });
-                                    
-                                    // Generate the zip file
-                                    const zipContent = await zip.generateAsync({ type: 'blob' });
-                                    
-                                    // Create download link
-                                    const downloadUrl = URL.createObjectURL(zipContent);
-                                    const a = document.createElement('a');
-                                    a.href = downloadUrl;
-                                    a.download = 'files.zip';
-                                    document.body.appendChild(a);
-                                    a.click();
-                                    document.body.removeChild(a);
-                                    URL.revokeObjectURL(downloadUrl);
-                                    
-                                    log(`Downloaded ${filesForDownload.length} files as zip`, 'success');
-                                } catch (error) {
-                                    log(`Error creating zip file: ${error.message}`, 'error');
-                                    console.error(error);
-                                }
-                            };
-                            
-                            script.onerror = () => {
-                                log('Failed to load JSZip library. Check your internet connection.', 'error');
-                            };
-                            
-                            // Add script to document to load it
-                            document.head.appendChild(script);
-                        }
+            // Add download functionality to the button
+            setTimeout(() => {
+                const downloadBtn = fileInfo.querySelector('.preview-download-btn');
+                if (downloadBtn) {
+                    downloadBtn.addEventListener('click', () => {
+                        downloadFiles([file]);
                     });
                 }
-            }
-            // After everything is built, set the correct UI state for the action area
-            updateDataFilesActionAreaUI(activePythonScriptForDataSelection);
+            }, 0);
+            
+            return fileInfo;
+        }
+
+        // Calculate SHA-256 checksum for a file
+        async function calculateFileChecksum(fileData) {
+            const hashBuffer = await crypto.subtle.digest('SHA-256', fileData);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
         }
         
-        // New helper function to specifically update the UI of the action area
-        function updateDataFilesActionAreaUI(pythonScript) {
-            const downloadBtn = document.getElementById('downloadSelectedDataFiles');
-            const messageEl = document.getElementById('dataFilesMessageText');
-
-            if (downloadBtn && messageEl) {
-                if (pythonScript) { // A Python script tile is selected
-                    downloadBtn.style.display = 'none';
-                    messageEl.style.display = 'block'; 
-                } else { // No Python script tile is selected
-                    downloadBtn.style.display = 'inline-block';
-                    messageEl.style.display = 'none';
-                    // Update button states only when in general selection mode
-                    updateDataFileActionButtonsState();
-                }
-            }
-            // If no pythonScript, updateDataFileActionButtonsState is called above.
-            // If pythonScript is active, those buttons are hidden, so their state is less critical.
-        }
-
         // Process modified files returned from Pyodide
-        function handleModifiedFiles(modifiedFiles) {
+        async function handleModifiedFiles(modifiedFiles, inputFileChecksums = {}) {
             if (!modifiedFiles || modifiedFiles.length === 0) {
                 return;
             }
             
-            log(`Processing ${modifiedFiles.length} modified files from Python execution...`, 'info');
+            log(`Processing ${modifiedFiles.length} files from Python execution...`, 'info');
+            
+            const newProcessFiles = [];
             
             // Process each modified file
-            modifiedFiles.forEach(modifiedFile => {
-                // Create a File object from the binary data
-                const blob = new Blob([modifiedFile.data], { type: 'application/octet-stream' });
-                const file = new File([blob], modifiedFile.name, { 
-                    lastModified: new Date().getTime() 
-                });
+            for (const modifiedFile of modifiedFiles) {
+                // Calculate checksum of the output file
+                const outputChecksum = await calculateFileChecksum(modifiedFile.data);
+                const inputChecksum = inputFileChecksums[modifiedFile.name];
                 
-                // Set isPython property
-                file.isPython = file.name.toLowerCase().endsWith('.py');
-                
-                // Check if this file already exists in our files array
-                const existingFileIndex = allFiles.findIndex(f => f.name === modifiedFile.name);
-                
-                if (existingFileIndex >= 0) {
-                    // Replace the existing file
-                    allFiles[existingFileIndex] = file;
-                    log(`Updated file: ${modifiedFile.name}`, 'success');
+                // Only include if file is new or has changed
+                if (!inputChecksum || outputChecksum !== inputChecksum) {
+                    // Create a File object from the binary data
+                    const blob = new Blob([modifiedFile.data], { type: 'application/octet-stream' });
+                    const file = new File([blob], modifiedFile.name, { 
+                        lastModified: new Date().getTime() 
+                    });
+                    
+                    newProcessFiles.push(file);
+                    
+                    if (inputChecksum) {
+                        log(`Modified file: ${modifiedFile.name}`, 'success');
+                    } else {
+                        log(`New output file: ${modifiedFile.name}`, 'success');
+                    }
                 } else {
-                    // Add as a new file
-                    file.wasJustCreatedByPyodide = true; // Flag for visual indicator
-                    allFiles.push(file);
-                    log(`Added new file from Python: ${modifiedFile.name}`, 'success');
+                    log(`Skipped unchanged file: ${modifiedFile.name}`, 'info');
                 }
-            });
+            }
             
-            // Refresh the file list display
-            updateDataFileList();
+            // Add to process files only if there are new/modified files
+            if (newProcessFiles.length > 0) {
+                addProcessFiles(newProcessFiles);
+            } else {
+                log('No new or modified files to add to output.', 'info');
+            }
         }
         
         // Execute a Python file using a web worker
@@ -1418,30 +1590,14 @@
             const scriptToRun = pythonScripts.find(ps => ps.name === file.name);
             
             if (!scriptToRun) {
-                log(`Error: Script ${file.name} not found in the list of runnable Python scripts. Attempting to read content directly.`, 'error');
-                try {
-                    const content = await file.text(); 
-                    await executePythonFileInternal(file, content, []); // Run with no data files
-                } catch (readError) {
-                    log(`Error reading content for ${file.name}: ${readError.message}`, 'error');
-                }
+                log(`Error: Script ${file.name} not found in the list of runnable Python scripts.`, 'error');
                 return;
             }
 
-            // Recheck and include newly available required files
-            updateScriptSelectionsWithAvailableRequiredFiles(scriptToRun);
-
-            const dataFilesToInclude = allFiles.filter(dataFile =>
-                scriptToRun.selectedDataFileNames.has(dataFile.name)
-            );
-
-            if (dataFilesToInclude.length === 0) {
-                log(`Running ${scriptToRun.name} from preview without any additional data files (none selected for this script).`, "info");
-            } else {
-                log(`Running ${scriptToRun.name} from preview with its selected data files: ${dataFilesToInclude.map(f=>f.name).join(', ') || 'none'}`, "info");
-            }
+            const filesToInclude = getFilesForScript(scriptToRun);
+            log(`Running ${scriptToRun.name} from preview with files: ${filesToInclude.map(f=>f.name).join(', ') || 'none'}`, "info");
             
-            await executePythonFileInternal(scriptToRun.fileObject, scriptToRun.content, dataFilesToInclude);
+            await executePythonFileInternal(scriptToRun.fileObject, scriptToRun.content, filesToInclude);
         }
 
         // Internal function to handle actual execution, called by both run button types
@@ -1449,6 +1605,13 @@
             log(`Executing ${pyFileObject.name} with ${dataFilesToInclude.length} data file(s)`);
 
             try {
+                // Calculate checksums of input files before execution
+                const inputFileChecksums = {};
+                for (const file of dataFilesToInclude) {
+                    const fileData = await file.arrayBuffer();
+                    inputFileChecksums[file.name] = await calculateFileChecksum(fileData);
+                }
+                
                 const result = await runPythonScript(scriptContent, {}, dataFilesToInclude);
                 
                 if (result.status === "complete") {
@@ -1457,35 +1620,41 @@
                     }
                     
                     if (result.modifiedFiles && result.modifiedFiles.length > 0) {
-                        handleModifiedFiles(result.modifiedFiles);
+                        await handleModifiedFiles(result.modifiedFiles, inputFileChecksums);
                     }
-                    // The old includedForRun logic is removed.
+                    
+                    // Mark script as successfully run
+                    markScriptAsSuccessful(pyFileObject.name);
                 }
             } catch (error) {
                 log(`Failed to execute ${pyFileObject.name}: ${error}`, 'error');
             }
         }
+        
+        // Mark a script tile as successful
+        function markScriptAsSuccessful(scriptName) {
+            const scriptTiles = scriptsList.querySelectorAll('.file-tile');
+            scriptTiles.forEach(tile => {
+                if (tile.dataset.scriptName === scriptName) {
+                    tile.classList.add('success');
+                }
+            });
+        }
 
 
+        // Clear all selections across all zones
+        function clearAllSelections() {
+            document.querySelectorAll('.file-tile.selected').forEach(tile => {
+                tile.classList.remove('selected');
+            });
+            activeScript = null;
+            updateRunButtonState();
+        }
+        
         // Select a file for preview
         function selectFile(file) {
-            selectedFile = { file };
-            
-            // Update UI for selected file
-            document.querySelectorAll('.file-row').forEach(row => {
-                row.classList.remove('active');
-            });
-            
-            // Find the file row and mark it as active
-            const fileRows = document.querySelectorAll('.file-row');
-            for (let row of fileRows) {
-                if (row.textContent.includes(file.name)) {
-                    row.classList.add('active');
-                    break;
-                }
-            }
-            
-            // Preview file
+            selectedFile = file;
+            clearAllSelections();
             previewFile(file);
         }
 
@@ -1529,10 +1698,9 @@
                 
                 // Create table container
                 const tableContainer = document.createElement('div');
-                tableContainer.style.overflowX = 'auto';
-                tableContainer.style.maxHeight = '500px';
-                tableContainer.style.minHeight = '200px'; // Minimum height for ~5 rows
-                tableContainer.style.overflowY = 'auto';
+                tableContainer.style.overflow = 'auto';
+                tableContainer.style.maxHeight = 'calc(100% - 120px)';
+                tableContainer.style.boxSizing = 'border-box';
                 
                 // Create HTML table
                 const table = document.createElement('table');
@@ -1642,33 +1810,21 @@
         function previewFile(file) {
             previewPanel.innerHTML = ''; // Clear preview panel
             
-            // Create preview header
-            const header = document.createElement('div');
-            header.style.padding = '0 0 15px 0';
-            header.style.borderBottom = '1px solid #eee';
-            header.style.marginBottom = '15px';
+            // Add file info at the top
+            const fileInfo = updatePreviewWithFileInfo(file);
+            previewPanel.appendChild(fileInfo);
             
             // For Python files, add a Run button
-            let runButtonHtml = ''; // Renamed variable to avoid conflict
-            if (file.isPython) {
-                // Check if this python file is in our pythonScripts list to ensure it's runnable
-                const isRunnablePython = pythonScripts.some(ps => ps.name === file.name);
-                if (isRunnablePython) {
-                    runButtonHtml = `<button id="runPreviewedFile" class="run-button" style="float: right;">Run Script</button>`;
-                } else if (allFiles.some(f => f.name === file.name && f.isPython)) {
-                     // It's a .py file in the data list, not the python script list. Don't show run button.
-                     log(`Note: ${file.name} is a Python file in the data list. To run, drop it in the Python Scripts area.`, 'info');
-                }
-            }
-            
-            header.innerHTML = `<strong>${file.name}</strong> (${(file.size / 1024).toFixed(2)} KB)${runButtonHtml}`;
-            previewPanel.appendChild(header);
-            
-            // Add run button event listener
-            if (file.isPython && document.getElementById('runPreviewedFile')) {
-                document.getElementById('runPreviewedFile').addEventListener('click', () => {
-                    executePythonFile(file); // file here is the File object being previewed
+            const isPythonScript = file.name.toLowerCase().endsWith('.py') && pythonScripts.some(ps => ps.name === file.name);
+            if (isPythonScript) {
+                const runButton = document.createElement('button');
+                runButton.className = 'run-button';
+                runButton.textContent = 'Run Script';
+                runButton.style.marginBottom = '15px';
+                runButton.addEventListener('click', () => {
+                    executePythonFile(file);
                 });
+                previewPanel.appendChild(runButton);
             }
             
             const ext = file.name.split('.').pop().toLowerCase();
@@ -1728,14 +1884,54 @@
                 dropZoneElement.classList.remove('active');
                 handleFileSelect(e.dataTransfer.files, zoneId); // Pass zoneId
             });
+            
+            // Handle click to select files (only for drop zones, not output panel)
+            if (zoneId !== 'fileOutputZone') {
+                dropZoneElement.addEventListener('click', (e) => {
+                    // Simplified approach: block specific interactive elements, allow everything else
+                    const isInteractiveElement = 
+                        e.target.tagName === 'BUTTON' || // Buttons
+                        e.target.closest('button') || // Elements inside buttons
+                        e.target.classList.contains('file-tile') || // File tiles
+                        e.target.closest('.file-tile') || // Elements inside file tiles
+                        e.target.classList.contains('drop-all-tile') || // Drop all tile
+                        e.target.closest('.drop-all-tile'); // Elements inside drop all tile
+                    
+                    if (!isInteractiveElement) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        
+                        const input = document.createElement('input');
+                        input.type = 'file';
+                        input.multiple = true;
+                        input.style.display = 'none';
+                        
+                        if (zoneId === 'scriptZone') {
+                            input.accept = '.py';
+                        }
+                        
+                        input.onchange = (event) => {
+                            if (event.target.files.length > 0) {
+                                handleFileSelect(event.target.files, zoneId);
+                            }
+                            // Clean up input element
+                            document.body.removeChild(input);
+                        };
+                        
+                        // Add to DOM temporarily for the click to work
+                        document.body.appendChild(input);
+                        input.click();
+                    }
+                });
+            }
         }
 
         // Initialize
         function init() {
-            setupDropZone(pythonDropZone, 'pythonDropZone'); // Setup for Python zone
-            setupDropZone(dataFilesDropZone, 'dataFilesDropZone'); // Setup for Data files zone
+            setupDropZone(scriptZone, 'scriptZone'); // Setup for script zone
+            setupDropZone(fileDropZone, 'fileDropZone'); // Setup for file drop zone
             log('App initialized and ready');
-            log('Drag and drop Python files to the left, data files to the middle.');
+            log('Drag and drop Python scripts to the script zone, and data files will be managed based on script requirements.');
         }
 
         // Start the app
